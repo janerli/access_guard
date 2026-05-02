@@ -7,9 +7,8 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     include=[
         "app.modules.identity.tasks",
-        # "app.modules.access.tasks",    # Этап 4
-        # "app.modules.monitor.tasks",   # Этап 5
-        # "app.modules.reports.tasks",   # Этап 6
+        "app.modules.monitor.tasks",
+        "app.modules.reports.tasks",
     ],
 )
 
@@ -30,6 +29,18 @@ celery_app.conf.update(
         "identity-reconcile-hr": {
             "task": "identity.reconcile_with_hr",
             "schedule": 86400,
+        },
+        "monitor-publish-outbox": {
+            "task": "monitor.publish_outbox",
+            "schedule": 10,  # каждые 10 секунд
+        },
+        "monitor-evaluate-complex-rules": {
+            "task": "monitor.evaluate_complex_rules",
+            "schedule": 60,
+        },
+        "reports-check-schedules": {
+            "task": "reports.check_schedules",
+            "schedule": 60,  # каждую минуту
         },
     },
 )

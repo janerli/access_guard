@@ -1,4 +1,4 @@
-import api from "./client";
+import { api } from "./client";
 
 export type UserStatus = "new" | "active" | "suspended" | "blocked" | "deleted";
 
@@ -79,26 +79,26 @@ export const identityApi = {
     department_id?: string;
     page?: number;
     page_size?: number;
-  }) => api.get<UsersListResponse>("/api/identity/users", { params }),
+  }) => api.get<UsersListResponse>("/identity/users", { params }),
 
-  getUser: (id: string) => api.get<User>(`/api/identity/users/${id}`),
+  getUser: (id: string) => api.get<User>(`/identity/users/${id}`),
 
-  createUser: (body: UserCreateBody) => api.post<User>("/api/identity/users", body),
+  createUser: (body: UserCreateBody) => api.post<User>("/identity/users", body),
 
   updateUser: (id: string, body: UserUpdateBody) =>
-    api.patch<User>(`/api/identity/users/${id}`, body),
+    api.patch<User>(`/identity/users/${id}`, body),
 
-  suspendUser: (id: string) => api.post<User>(`/api/identity/users/${id}/suspend`),
-  restoreUser: (id: string) => api.post<User>(`/api/identity/users/${id}/restore`),
-  blockUser: (id: string) => api.post<User>(`/api/identity/users/${id}/block`),
-  deleteUser: (id: string) => api.delete(`/api/identity/users/${id}`),
+  suspendUser: (id: string) => api.post<User>(`/identity/users/${id}/suspend`),
+  restoreUser: (id: string) => api.post<User>(`/identity/users/${id}/restore`),
+  blockUser: (id: string) => api.post<User>(`/identity/users/${id}/block`),
+  deleteUser: (id: string) => api.delete(`/identity/users/${id}`),
 
   resetPassword: (id: string, new_password: string) =>
-    api.post(`/api/identity/users/${id}/reset-password`, { new_password }),
+    api.post(`/identity/users/${id}/reset-password`, { new_password }),
 
-  listPositions: () => api.get<Position[]>("/api/identity/positions"),
-  listDepartments: () => api.get<Department[]>("/api/identity/departments"),
+  listPositions: () => api.get<Position[]>("/identity/positions"),
+  listDepartments: () => api.get<Department[]>("/identity/departments"),
 
   listEvents: (params: { user_id?: string; event_type?: string; page?: number }) =>
-    api.get<LifecycleEventsResponse>("/api/identity/events", { params }),
+    api.get<LifecycleEventsResponse>("/identity/events", { params }),
 };

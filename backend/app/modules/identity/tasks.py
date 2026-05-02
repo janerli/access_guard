@@ -14,14 +14,10 @@ logger = structlog.get_logger()
 _BLOCKED_DELETE_DAYS = 90
 
 
-def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
 @celery_app.task(name="identity.cleanup_blocked_users")
 def cleanup_blocked_users():
     """Переводит пользователей, пробывших в blocked > 90 дней, в deleted."""
-    _run(_cleanup_blocked_users_async())
+    asyncio.run(_cleanup_blocked_users_async())
 
 
 async def _cleanup_blocked_users_async():
@@ -44,7 +40,7 @@ async def _cleanup_blocked_users_async():
 @celery_app.task(name="identity.reconcile_with_hr")
 def reconcile_with_hr():
     """Сверяет активных сотрудников с HR-mock."""
-    _run(_reconcile_async())
+    asyncio.run(_reconcile_async())
 
 
 async def _reconcile_async():

@@ -7,7 +7,8 @@
       "PowerShell(head *)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\\\\backend\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Sort-Object FullName)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\\\\frontend\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Sort-Object FullName)",
-      "PowerShell(tree *)"
+      "PowerShell(tree *)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

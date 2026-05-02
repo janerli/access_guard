@@ -1,56 +1,32 @@
 """Тесты Identity модуля — CRUD пользователей, жизненный цикл."""
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.identity import Department, Position, UserExt, UserStatus
+from app.models.identity import Department, Position
 
 
 @pytest.fixture
-async def seed_position(db_session):
-    from uuid import uuid4
-    pos = Position(id=uuid4(), code="TEST-POS", name="Тестовая должность", level=1)
+async def seed_refs(db_session: AsyncSession):
+    """Вставляет эталонную должность и отдел в тестовую сессию."""
+    pos = Position(id=uuid4(), code="TEST-POS-1", name="Тестовая должность", level=1)
+    dept = Department(id=uuid4(), code="TEST-DEPT-1", name="Тестовый отдел")
     db_session.add(pos)
-    await db_session.flush()
-    return pos
-
-
-@pytest.fixture
-async def seed_department(db_session):
-    from uuid import uuid4
-    dept = Department(id=uuid4(), code="TEST-DEPT", name="Тестовый отдел")
     db_session.add(dept)
     await db_session.flush()
-    return dept
+    return {"position_code": "TEST-POS-1", "department_code": "TEST-DEPT-1"}
+
+
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.asyncio
-async def test_create_user_via_api(client, seed_position, seed_department):
-    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mock_prod:
-        mock_prod.return_value.send = AsyncMock()
-        resp = await client.post(
-            "/api/identity/users",
-            json={
-                "employee_id": "E-0001",
-                "username": "test.user",
-                "email": "test.user@accessguard.local",
-                "full_name": "Тестов Тест Тестович",
-                "position_code": "TEST-POS",
-                "department_code": "TEST-DEPT",
-            },
-            headers={"Authorization": "Bearer " + await _get_token(client)},
-        )
-    assert resp.status_code == 201, resp.text
-    data = resp.json()
-    assert data["employee_id"] == "E-0001"
-    assert data["status"] == "active"
-    assert data["username"] == "test.user"
-
-
-@pytest.mark.asyncio
-async def test_list_users(client):
-    token = await _get_token(client)
-    resp = await client.get("/api/identity/users", headers={"Authorization": f"Bearer {token}"})
+async def test_list_users_empty(client: AsyncClient, admin_token: str):
+    resp = await client.get("/api/identity/users", headers=_headers(admin_token))
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data
@@ -58,78 +34,141 @@ async def test_list_users(client):
 
 
 @pytest.mark.asyncio
-async def test_create_and_block_user(client, seed_position, seed_department):
-    token = await _get_token(client)
-    headers = {"Authorization": f"Bearer {token}"}
-
+async def test_create_user(client: AsyncClient, admin_token: str, seed_refs):
     with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
         mp.return_value.send = AsyncMock()
         resp = await client.post(
             "/api/identity/users",
             json={
-                "employee_id": "E-0002",
-                "username": "block.me",
-                "email": "block.me@accessguard.local",
-                "full_name": "Блокируемый Пользователь",
+                "employee_id": f"E-TEST-{uuid4().hex[:6]}",
+                "username": f"u_{uuid4().hex[:8]}",
+                "email": f"u_{uuid4().hex[:8]}@test.local",
+                "full_name": "Иванов Иван Иванович",
+                "position_code": seed_refs["position_code"],
+                "department_code": seed_refs["department_code"],
             },
-            headers=headers,
+            headers=_headers(admin_token),
         )
-    assert resp.status_code == 201
-    user_id = resp.json()["id"]
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["status"] == "active"
+    assert data["full_name"] == "Иванов Иван Иванович"
+    return data["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_user_duplicate_employee_id(client: AsyncClient, admin_token: str):
+    emp_id = f"E-DUP-{uuid4().hex[:6]}"
+    payload = lambda: {
+        "employee_id": emp_id,
+        "username": f"u_{uuid4().hex[:8]}",
+        "email": f"u_{uuid4().hex[:8]}@test.local",
+        "full_name": "Дубликат",
+    }
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        r1 = await client.post("/api/identity/users", json=payload(), headers=_headers(admin_token))
+    assert r1.status_code == 201
 
     with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
         mp.return_value.send = AsyncMock()
-        resp = await client.post(f"/api/identity/users/{user_id}/block", headers=headers)
+        r2 = await client.post("/api/identity/users", json=payload(), headers=_headers(admin_token))
+    assert r2.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_user(client: AsyncClient, admin_token: str):
+    # Сначала создаём
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        create_resp = await client.post(
+            "/api/identity/users",
+            json={
+                "employee_id": f"E-GET-{uuid4().hex[:6]}",
+                "username": f"u_get_{uuid4().hex[:8]}",
+                "email": f"get_{uuid4().hex[:8]}@test.local",
+                "full_name": "Петров Пётр Петрович",
+            },
+            headers=_headers(admin_token),
+        )
+    assert create_resp.status_code == 201
+    user_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/api/identity/users/{user_id}", headers=_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.json()["id"] == user_id
+
+
+@pytest.mark.asyncio
+async def test_block_user(client: AsyncClient, admin_token: str):
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        create_resp = await client.post(
+            "/api/identity/users",
+            json={
+                "employee_id": f"E-BLOCK-{uuid4().hex[:6]}",
+                "username": f"u_blk_{uuid4().hex[:8]}",
+                "email": f"blk_{uuid4().hex[:8]}@test.local",
+                "full_name": "Блокируемый Пользователь",
+            },
+            headers=_headers(admin_token),
+        )
+    user_id = create_resp.json()["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.post(f"/api/identity/users/{user_id}/block", headers=_headers(admin_token))
     assert resp.status_code == 200
     assert resp.json()["status"] == "blocked"
 
 
 @pytest.mark.asyncio
-async def test_user_lifecycle_events(client):
-    token = await _get_token(client)
-    resp = await client.get("/api/identity/events", headers={"Authorization": f"Bearer {token}"})
+async def test_suspend_restore_user(client: AsyncClient, admin_token: str):
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        create_resp = await client.post(
+            "/api/identity/users",
+            json={
+                "employee_id": f"E-SUSP-{uuid4().hex[:6]}",
+                "username": f"u_susp_{uuid4().hex[:8]}",
+                "email": f"susp_{uuid4().hex[:8]}@test.local",
+                "full_name": "Отпускник",
+            },
+            headers=_headers(admin_token),
+        )
+    user_id = create_resp.json()["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        r = await client.post(f"/api/identity/users/{user_id}/suspend", headers=_headers(admin_token))
+    assert r.json()["status"] == "suspended"
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        r = await client.post(f"/api/identity/users/{user_id}/restore", headers=_headers(admin_token))
+    assert r.json()["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_events_list(client: AsyncClient, admin_token: str):
+    resp = await client.get("/api/identity/events", headers=_headers(admin_token))
     assert resp.status_code == 200
     assert "items" in resp.json()
 
 
 @pytest.mark.asyncio
-async def test_positions_list(client):
-    token = await _get_token(client)
-    resp = await client.get("/api/identity/positions", headers={"Authorization": f"Bearer {token}"})
+async def test_positions_list(client: AsyncClient, admin_token: str, seed_refs):
+    resp = await client.get("/api/identity/positions", headers=_headers(admin_token))
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
+    items = resp.json()
+    assert isinstance(items, list)
+    codes = [p["code"] for p in items]
+    assert "TEST-POS-1" in codes
 
 
 @pytest.mark.asyncio
-async def test_departments_list(client):
-    token = await _get_token(client)
-    resp = await client.get("/api/identity/departments", headers={"Authorization": f"Bearer {token}"})
+async def test_departments_list(client: AsyncClient, admin_token: str, seed_refs):
+    resp = await client.get("/api/identity/departments", headers=_headers(admin_token))
     assert resp.status_code == 200
-    assert isinstance(resp.json(), list)
-
-
-async def _get_token(client) -> str:
-    """Создаёт admin-пользователя и возвращает JWT токен."""
-    from app.core.security import hash_password
-    from app.database import AsyncSessionLocal
-    from app.models.admin import AdminRole, AdminUser
-    import uuid
-
-    async with AsyncSessionLocal() as db:
-        user = (await db.execute(
-            __import__("sqlalchemy").select(AdminUser).where(AdminUser.username == "_test_admin")
-        )).scalar_one_or_none()
-        if not user:
-            user = AdminUser(
-                id=uuid.uuid4(),
-                username="_test_admin",
-                email="_test@test.com",
-                full_name="Test Admin",
-                hashed_password=hash_password("Password123!"),
-                role=AdminRole.system_admin,
-            )
-            db.add(user)
-            await db.commit()
-
-    resp = await client.post("/api/auth/login", json={"username": "_test_admin", "password": "Password123!"})
-    return resp.json()["access_token"]
+    codes = [d["code"] for d in resp.json()]
+    assert "TEST-DEPT-1" in codes

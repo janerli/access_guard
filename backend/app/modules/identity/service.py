@@ -1,11 +1,17 @@
-"""Identity service — бизнес-логика управления учётными записями."""
+"""Identity service — бизнес-логика управления учётными записями.
+
+Соглашение: сервис вызывает только flush() для получения ID.
+Commit выполняется вызывающей стороной:
+  - get_db() в роутере (автоматически)
+  - consumer (явно после вызова сервиса)
+"""
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.kafka.events import KafkaEvent
@@ -60,6 +66,22 @@ async def _publish_user_event(event_type: str, user: UserExt, correlation_id: UU
         logger.warning("kafka_publish_failed", topic=TOPIC_IDENTITY_USERS, error=str(exc))
 
 
+async def _publish_lifecycle_event(event_type: str, user: UserExt, correlation_id: UUID) -> None:
+    try:
+        await publish_event(
+            TOPIC_IDENTITY_LIFECYCLE,
+            KafkaEvent(
+                event_type=event_type,
+                producer="identity",
+                correlation_id=correlation_id,
+                payload={"user_id": str(user.id), "employee_id": user.employee_id},
+            ),
+            key=str(user.id),
+        )
+    except Exception as exc:
+        logger.warning("kafka_publish_failed", topic=TOPIC_IDENTITY_LIFECYCLE, error=str(exc))
+
+
 async def create_user(
     db: AsyncSession,
     employee_id: str,
@@ -84,7 +106,7 @@ async def create_user(
         status=UserStatus.active,
     )
     db.add(user)
-    await db.flush()
+    await db.flush()  # get user.id
 
     lifecycle = LifecycleEvent(
         id=uuid.uuid4(),
@@ -96,40 +118,24 @@ async def create_user(
         processed_at=datetime.now(timezone.utc),
     )
     db.add(lifecycle)
+    await db.flush()
 
-    # Best-effort LDAP creation
+    # Best-effort LDAP
     try:
         from app.core.ldap_client import ldap_create_user
         ldap_dn = ldap_create_user(user.username, user.full_name, user.email, department_code)
         user.ldap_dn = ldap_dn
+        await db.flush()
     except Exception as exc:
         logger.warning("ldap_create_failed", employee_id=employee_id, error=str(exc))
 
-    await db.commit()
-    await db.refresh(user)
-
+    # Publish after flush — commit happens upstream (get_db or consumer)
     corr = correlation_id or uuid.uuid4()
     await _publish_user_event("user.created", user, corr)
     await _publish_lifecycle_event("lifecycle.hired", user, corr)
 
     logger.info("user_created", user_id=str(user.id), employee_id=employee_id)
     return user
-
-
-async def _publish_lifecycle_event(event_type: str, user: UserExt, correlation_id: UUID) -> None:
-    try:
-        await publish_event(
-            TOPIC_IDENTITY_LIFECYCLE,
-            KafkaEvent(
-                event_type=event_type,
-                producer="identity",
-                correlation_id=correlation_id,
-                payload={"user_id": str(user.id), "employee_id": user.employee_id},
-            ),
-            key=str(user.id),
-        )
-    except Exception as exc:
-        logger.warning("kafka_publish_failed", topic=TOPIC_IDENTITY_LIFECYCLE, error=str(exc))
 
 
 async def update_user(
@@ -153,17 +159,15 @@ async def update_user(
         department = await _get_department(db, department_code)
         if department:
             user.department_id = department.id
+    await db.flush()
 
-    # Best-effort LDAP update
     if user.ldap_dn:
         try:
             from app.core.ldap_client import ldap_modify_user
             ldap_modify_user(user.ldap_dn, cn=full_name, mail=email)
         except Exception as exc:
-            logger.warning("ldap_modify_failed", ldap_dn=user.ldap_dn, error=str(exc))
+            logger.warning("ldap_modify_failed", error=str(exc))
 
-    await db.commit()
-    await db.refresh(user)
     await _publish_user_event("user.updated", user, correlation_id or uuid.uuid4())
     return user
 
@@ -189,8 +193,8 @@ async def _change_status(
         processed_at=datetime.now(timezone.utc),
     )
     db.add(lifecycle)
+    await db.flush()
 
-    # Best-effort LDAP operations
     if new_status == UserStatus.blocked and user.ldap_dn:
         try:
             from app.core.ldap_client import ldap_block_user
@@ -204,17 +208,17 @@ async def _change_status(
         except Exception as exc:
             logger.warning("ldap_delete_failed", error=str(exc))
 
-    await db.commit()
-    await db.refresh(user)
     corr = correlation_id or uuid.uuid4()
     await _publish_user_event(kafka_event_type, user, corr)
-    if lifecycle_type in (LifecycleEventType.terminate, LifecycleEventType.leave_start, LifecycleEventType.leave_end):
-        lc_type_map = {
-            LifecycleEventType.terminate: "lifecycle.terminated",
-            LifecycleEventType.leave_start: "lifecycle.transferred",
-            LifecycleEventType.leave_end: "lifecycle.transferred",
-        }
-        await _publish_lifecycle_event(lc_type_map[lifecycle_type], user, corr)
+
+    lc_map = {
+        LifecycleEventType.terminate: "lifecycle.terminated",
+        LifecycleEventType.leave_start: "lifecycle.transferred",
+        LifecycleEventType.leave_end: "lifecycle.transferred",
+    }
+    if lifecycle_type in lc_map:
+        await _publish_lifecycle_event(lc_map[lifecycle_type], user, corr)
+
     return user
 
 
@@ -231,7 +235,10 @@ async def block_user(db: AsyncSession, user: UserExt, correlation_id: Optional[U
 
 
 async def delete_user(db: AsyncSession, user: UserExt, correlation_id: Optional[UUID] = None) -> UserExt:
-    return await _change_status(db, user, UserStatus.deleted, LifecycleEventType.terminate, "user.deleted", source=LifecycleEventSource.scheduled, correlation_id=correlation_id)
+    return await _change_status(
+        db, user, UserStatus.deleted, LifecycleEventType.terminate, "user.deleted",
+        source=LifecycleEventSource.scheduled, correlation_id=correlation_id,
+    )
 
 
 async def transfer_user(
@@ -255,17 +262,12 @@ async def transfer_user(
         user_id=user.id,
         event_type=LifecycleEventType.transfer,
         source=LifecycleEventSource.hr_system,
-        payload={
-            "user_id": str(user.id),
-            "position_code": position_code,
-            "department_code": department_code,
-        },
+        payload={"user_id": str(user.id), "position_code": position_code, "department_code": department_code},
         status=LifecycleEventStatus.processed,
         processed_at=datetime.now(timezone.utc),
     )
     db.add(lifecycle)
-    await db.commit()
-    await db.refresh(user)
+    await db.flush()
 
     corr = correlation_id or uuid.uuid4()
     await _publish_user_event("user.updated", user, corr)
@@ -293,7 +295,6 @@ async def list_users(
     page_size: int = 20,
 ) -> tuple[list[UserExt], int]:
     query = select(UserExt).where(UserExt.status != UserStatus.deleted)
-
     if status:
         query = query.where(UserExt.status == status)
     if department_id:
@@ -302,23 +303,16 @@ async def list_users(
         query = query.where(UserExt.position_id == position_id)
     if search:
         like = f"%{search}%"
-        from sqlalchemy import or_
         query = query.where(
-            or_(
-                UserExt.full_name.ilike(like),
-                UserExt.username.ilike(like),
-                UserExt.email.ilike(like),
-                UserExt.employee_id.ilike(like),
-            )
+            or_(UserExt.full_name.ilike(like), UserExt.username.ilike(like),
+                UserExt.email.ilike(like), UserExt.employee_id.ilike(like))
         )
 
     count_q = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_q)
-    total = total_result.scalar_one()
-
+    total = (await db.execute(count_q)).scalar_one()
     query = query.offset((page - 1) * page_size).limit(page_size).order_by(UserExt.full_name)
     result = await db.execute(query)
-    return result.scalars().all(), total
+    return list(result.scalars().all()), total
 
 
 async def list_lifecycle_events(
@@ -330,7 +324,6 @@ async def list_lifecycle_events(
     page_size: int = 20,
 ) -> tuple[list[LifecycleEvent], int]:
     query = select(LifecycleEvent)
-
     if user_id:
         query = query.where(LifecycleEvent.user_id == user_id)
     if event_type:
@@ -340,7 +333,6 @@ async def list_lifecycle_events(
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar_one()
-
     query = query.offset((page - 1) * page_size).limit(page_size).order_by(LifecycleEvent.created_at.desc())
     result = await db.execute(query)
-    return result.scalars().all(), total
+    return list(result.scalars().all()), total

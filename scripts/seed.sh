@@ -70,6 +70,10 @@ else
   echo "  HR-mock недоступен, пропускаем"
 fi
 
+# ── 4b. Расширенный seed (сотрудники, аудит, отчёты) ─────────────────────────
+echo "→ Генерация демо-данных (сотрудники, аудит, отчёты)..."
+docker compose exec -T -e PYTHONPATH=/app backend python /app/scripts/seed_data.py && echo "  Демо-данные созданы." || echo "  seed_data.py завершился с ошибкой (возможно данные уже существуют)"
+
 # ── 5. Импорт Kibana дашбордов ────────────────────────────────────────────────
 echo "→ Импорт дашбордов Kibana..."
 if curl -sf "http://localhost:5601/api/status" > /dev/null 2>&1; then

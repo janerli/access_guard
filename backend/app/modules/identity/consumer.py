@@ -20,18 +20,21 @@ async def handle_hr_event(event: KafkaEvent) -> None:
     correlation_id = event.correlation_id
 
     async with AsyncSessionLocal() as db:
-        if event_type == "hire":
-            await _handle_hire(db, employee_id, payload, correlation_id)
-        elif event_type == "transfer":
-            await _handle_transfer(db, employee_id, payload, correlation_id)
-        elif event_type == "leave_start":
-            await _handle_simple_status(db, employee_id, "leave_start", correlation_id)
-        elif event_type == "leave_end":
-            await _handle_simple_status(db, employee_id, "leave_end", correlation_id)
-        elif event_type == "terminate":
-            await _handle_simple_status(db, employee_id, "terminate", correlation_id)
-        else:
-            logger.warning("unknown_hr_event_type", event_type=event_type)
+        try:
+            if event_type == "hire":
+                await _handle_hire(db, employee_id, payload, correlation_id)
+            elif event_type == "transfer":
+                await _handle_transfer(db, employee_id, payload, correlation_id)
+            elif event_type in ("leave_start", "leave_end", "terminate"):
+                await _handle_simple_status(db, employee_id, event_type, correlation_id)
+            else:
+                logger.warning("unknown_hr_event_type", event_type=event_type)
+                return
+            await db.commit()  # commit здесь, т.к. сервис только делает flush
+        except Exception as exc:
+            await db.rollback()
+            logger.error("hr_event_processing_failed", event_type=event_type, employee_id=employee_id, error=str(exc))
+            raise
 
 
 async def _get_user(db, employee_id: str):
@@ -47,7 +50,7 @@ async def _handle_hire(db, employee_id: str, payload: dict, correlation_id: uuid
         logger.info("hire_skipped_user_exists", employee_id=employee_id)
         return
 
-    email = payload.get("email", f"{employee_id.lower()}@accessguard.local")
+    email = payload.get("email", f"{employee_id.lower().replace('-', '_')}@accessguard.local")
     username = email.split("@")[0].replace(".", "_")[:50]
 
     await create_user(
@@ -69,14 +72,8 @@ async def _handle_transfer(db, employee_id: str, payload: dict, correlation_id: 
     if not user:
         logger.warning("transfer_user_not_found", employee_id=employee_id)
         return
-
-    await transfer_user(
-        db=db,
-        user=user,
-        position_code=payload.get("position_code"),
-        department_code=payload.get("department_code"),
-        correlation_id=correlation_id,
-    )
+    await transfer_user(db=db, user=user, position_code=payload.get("position_code"),
+                        department_code=payload.get("department_code"), correlation_id=correlation_id)
 
 
 async def _handle_simple_status(db, employee_id: str, action: str, correlation_id: uuid.UUID) -> None:
@@ -86,7 +83,6 @@ async def _handle_simple_status(db, employee_id: str, action: str, correlation_i
     if not user:
         logger.warning("status_change_user_not_found", employee_id=employee_id, action=action)
         return
-
     if action == "leave_start":
         await svc.suspend_user(db, user, correlation_id)
     elif action == "leave_end":

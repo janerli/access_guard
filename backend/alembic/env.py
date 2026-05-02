@@ -16,9 +16,9 @@ from app.database import Base  # noqa: E402
 # Ensure all models are imported so metadata is populated
 import app.models.admin  # noqa: F401, E402
 import app.models.identity  # noqa: F401, E402
-# import app.modules.access.models    # Этап 4
-# import app.modules.monitor.models   # Этап 5
-# import app.modules.reports.models   # Этап 6
+import app.models.access  # noqa: F401, E402
+import app.models.monitor  # noqa: F401, E402
+import app.models.reports  # noqa: F401, E402
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

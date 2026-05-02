@@ -12,13 +12,18 @@ const ROLE_LABELS: Record<string, string> = {
 
 const NAV_ITEMS = [
   {
-    to: "/identity",
+    to: "/identity/users",
     label: "Учётные записи",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
+    sub: [
+      { to: "/identity/users", label: "Пользователи" },
+      { to: "/identity/structure", label: "Оргструктура" },
+      { to: "/identity/events", label: "Кадровые события" },
+    ],
   },
   {
     to: "/access",
@@ -28,6 +33,11 @@ const NAV_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
       </svg>
     ),
+    sub: [
+      { to: "/access/roles", label: "Роли" },
+      { to: "/access/matrix", label: "Матрица доступа" },
+      { to: "/access/requests", label: "Заявки" },
+    ],
   },
   {
     to: "/monitor",
@@ -37,6 +47,13 @@ const NAV_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
       </svg>
     ),
+    sub: [
+      { to: "/monitor/dashboard", label: "Дашборд" },
+      { to: "/monitor/audit", label: "Журнал аудита" },
+      { to: "/monitor/alerts", label: "Оповещения" },
+      { to: "/monitor/rules", label: "Правила" },
+      { to: "/monitor/kibana", label: "Kibana" },
+    ],
   },
   {
     to: "/reports",
@@ -46,6 +63,11 @@ const NAV_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
+    sub: [
+      { to: "/reports/templates", label: "Шаблоны" },
+      { to: "/reports/history", label: "История" },
+      { to: "/reports/schedules", label: "Расписания" },
+    ],
   },
 ];
 
@@ -103,21 +125,42 @@ export default function Layout() {
           </div>
 
           {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                )
-              }
-            >
-              {item.icon}
-              {item.label}
-            </NavLink>
+            <div key={item.to}>
+              <NavLink
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-blue-600 text-white"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  )
+                }
+              >
+                {item.icon}
+                {item.label}
+              </NavLink>
+              {"sub" in item && item.sub && (
+                <div className="ml-8 mt-0.5 space-y-0.5">
+                  {item.sub.map((s) => (
+                    <NavLink
+                      key={s.to}
+                      to={s.to}
+                      className={({ isActive }) =>
+                        cn(
+                          "block px-3 py-1.5 rounded text-xs font-medium transition-colors",
+                          isActive
+                            ? "text-blue-400"
+                            : "text-slate-500 hover:text-slate-300"
+                        )
+                      }
+                    >
+                      {s.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </nav>
 

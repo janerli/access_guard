@@ -45,3 +45,5 @@ export const authApi = {
   logout: () => api.post("/auth/logout"),
   refresh: () => api.post("/auth/refresh"),
 };
+
+export default api;
