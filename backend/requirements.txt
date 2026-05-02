@@ -1,0 +1,56 @@
+# Web framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+alembic>=1.13.0
+
+# Validation
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+email-validator>=2.1.0
+
+# Auth
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Celery
+celery[redis]>=5.3.6
+redis>=5.0.0
+
+# Logging
+structlog>=24.1.0
+
+# Kafka
+aiokafka>=0.10.0
+
+# Elasticsearch
+elasticsearch[async]>=8.13.0
+
+# LDAP
+ldap3>=2.9.1
+
+# Reports
+jinja2>=3.1.3
+openpyxl>=3.1.2
+# WeasyPrint требует системных зависимостей libpango, libcairo — устанавливается в Dockerfile
+weasyprint>=62.0
+
+# HTTP client (для HR-mock интеграции и тестов)
+httpx>=0.27.0
+
+# Email
+aiosmtplib>=3.0.0
+
+# Seed data
+faker>=24.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
+anyio>=4.3.0
+testcontainers>=4.4.0

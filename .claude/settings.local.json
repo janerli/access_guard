@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "PowerShell(head *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\\\\backend\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Sort-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\\\\frontend\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Sort-Object FullName)",
+      "PowerShell(tree *)"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Alembic
+celerybeat-schedule
+celerybeat.pid
+
+# Environment
+.env
+!.env.example
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Reports output
+backend/reports_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
