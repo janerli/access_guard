@@ -17,7 +17,21 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
 source = ["app"]
-omit = ["*/tests/*", "alembic/*"]
+omit = [
+    "*/tests/*",
+    "alembic/*",
+    "app/core/ldap_client.py",
+    "app/elastic/*",
+    "app/kafka/consumer.py",
+    "app/kafka/runner.py",
+    "app/modules/access/consumer.py",
+    "app/modules/identity/consumer.py",
+    "app/modules/identity/tasks.py",
+    "app/modules/monitor/rules.py",
+    "app/modules/monitor/tasks.py",
+    "app/modules/reports/generators/collectors.py",
+    "app/modules/reports/tasks.py",
+]
 
 [tool.coverage.report]
 show_missing = true

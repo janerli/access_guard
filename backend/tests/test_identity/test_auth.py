@@ -52,7 +52,7 @@ async def test_me_authenticated(client: AsyncClient, db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_me_no_token(client: AsyncClient):
     response = await client.get("/api/auth/me")
-    assert response.status_code == 403  # HTTPBearer returns 403 when no credentials
+    assert response.status_code == 401  # HTTPBearer returns 401 in FastAPI 0.110+
 
 
 @pytest.mark.asyncio
