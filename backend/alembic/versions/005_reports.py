@@ -114,7 +114,7 @@ def upgrade() -> None:
             '{uuid4()}', 'inactive_users', 'Неактивные пользователи',
             'Пользователи без активности более N дней',
             'elasticsearch',
-            '{{"type":"object","properties":{{"inactive_days":{{"type":"integer","default":90,"title":"Дней бездействия"}}}}}}',
+            '{{"type":"object","properties":{{"inactive_days":{{"type":"integer","default": 90,"title":"Дней бездействия"}}}}}}',
             ARRAY['pdf','xlsx','csv']
         ),
         (
