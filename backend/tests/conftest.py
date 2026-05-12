@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Import app (triggers model registration into Base.metadata)
@@ -24,7 +24,7 @@ def event_loop():
 
 
 @pytest_asyncio.fixture(scope="session")
-async def test_engine():
+async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     # NullPool avoids reusing asyncpg connections across different event loops
     # created by pytest-asyncio/httpx during test execution.
     engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
@@ -63,7 +63,7 @@ async def seed_admin(test_engine):
 
 
 @pytest_asyncio.fixture
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     async with session_factory() as session:
         yield session
@@ -71,7 +71,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(test_engine) -> AsyncGenerator[AsyncClient, None]:
+async def client(test_engine: AsyncEngine) -> AsyncGenerator[AsyncClient, None]:
     # HTTP requests should use independent DB sessions to avoid sharing one
     # AsyncSession/connection across concurrent FastAPI dependencies.
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
