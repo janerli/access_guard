@@ -68,13 +68,16 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    def _override():
-        async def _get():
-            yield db_session
-        return _get
+async def client(test_engine) -> AsyncGenerator[AsyncClient, None]:
+    # HTTP requests should use independent DB sessions to avoid sharing one
+    # AsyncSession/connection across concurrent FastAPI dependencies.
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
-    app.dependency_overrides[get_db] = _override()
+    async def _get_test_db():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = _get_test_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
