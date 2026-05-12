@@ -78,7 +78,12 @@ async def client(test_engine: AsyncEngine) -> AsyncGenerator[AsyncClient, None]:
 
     async def _get_test_db():
         async with session_factory() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     app.dependency_overrides[get_db] = _get_test_db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
