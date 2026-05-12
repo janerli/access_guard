@@ -111,7 +111,7 @@ async def test_list_permissions(client: AsyncClient, admin_token: str):
 
 
 @pytest.mark.asyncio
-async def test_add_remove_permission_to_role(client: AsyncClient, admin_token: str):
+async def test_add_remove_permission_to_role(client: AsyncClient, admin_token: str, db_session):
     # Create a role and a second role to borrow its permission id from list
     code = f"perm_role_{uuid4().hex[:6]}"
     role_resp = await client.post(
@@ -124,7 +124,16 @@ async def test_add_remove_permission_to_role(client: AsyncClient, admin_token: s
     perms_resp = await client.get("/api/access/permissions", headers=_headers(admin_token))
     perms = perms_resp.json()
     if not perms:
-        pytest.skip("No permissions in test DB (migration not run)")
+        from app.models.access import Permission
+
+        code = f"perm_{uuid4().hex[:8]}"
+        permission = Permission(code=code, description="Test permission")
+        db_session.add(permission)
+        await db_session.commit()
+
+        perms_resp = await client.get("/api/access/permissions", headers=_headers(admin_token))
+        perms = perms_resp.json()
+        assert perms
 
     perm_id = perms[0]["id"]
 
