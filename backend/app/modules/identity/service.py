@@ -31,6 +31,11 @@ from app.models.identity import (
 logger = structlog.get_logger()
 
 
+async def _prepare_user_response(db: AsyncSession, user: UserExt) -> UserExt:
+    await db.refresh(user, attribute_names=["created_at", "updated_at", "position", "department"])
+    return user
+
+
 async def _get_position(db: AsyncSession, code: str) -> Optional[Position]:
     result = await db.execute(select(Position).where(Position.code == code))
     return result.scalar_one_or_none()
@@ -135,7 +140,7 @@ async def create_user(
     await _publish_lifecycle_event("lifecycle.hired", user, corr)
 
     logger.info("user_created", user_id=str(user.id), employee_id=employee_id)
-    return user
+    return await _prepare_user_response(db, user)
 
 
 async def update_user(
@@ -169,7 +174,7 @@ async def update_user(
             logger.warning("ldap_modify_failed", error=str(exc))
 
     await _publish_user_event("user.updated", user, correlation_id or uuid.uuid4())
-    return user
+    return await _prepare_user_response(db, user)
 
 
 async def _change_status(
@@ -219,7 +224,7 @@ async def _change_status(
     if lifecycle_type in lc_map:
         await _publish_lifecycle_event(lc_map[lifecycle_type], user, corr)
 
-    return user
+    return await _prepare_user_response(db, user)
 
 
 async def suspend_user(db: AsyncSession, user: UserExt, correlation_id: Optional[UUID] = None) -> UserExt:

@@ -29,6 +29,8 @@ dist/
 
 # Reports output
 backend/reports_output/
+backend/.coverage
+backend/coverage.xml
 
 # IDE
 .vscode/

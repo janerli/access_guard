@@ -55,18 +55,26 @@ async def test_get_report_not_found(client: AsyncClient, admin_token: str):
 
 
 @pytest.mark.asyncio
-async def test_download_not_ready(client: AsyncClient, admin_token: str, seed_user_ext: str):
+async def test_download_not_ready(client: AsyncClient, admin_token: str, seed_user_ext: str, db_session):
     """Report in pending state — download should return 409."""
     from app.models.reports import Report, ReportStatus, ReportFormat
     from app.models.reports import ReportTemplate
     from sqlalchemy import select
 
-    # Skip if no templates exist
-    from app.database import AsyncSessionLocal
-    async with AsyncSessionLocal() as db:
-        tmpl = (await db.execute(select(ReportTemplate).limit(1))).scalar_one_or_none()
-        if not tmpl:
-            pytest.skip("No templates seeded")
+    tmpl = (await db_session.execute(select(ReportTemplate).limit(1))).scalar_one_or_none()
+    if not tmpl:
+        from app.models.reports import ReportDataSource
+
+        tmpl = ReportTemplate(
+            code=f"pytest_template_{uuid4().hex[:8]}",
+            name="Pytest Template",
+            description="Template for tests",
+            data_source=ReportDataSource.postgres,
+            parameters_schema={},
+            output_formats=["csv", "xlsx", "pdf"],
+        )
+        db_session.add(tmpl)
+        await db_session.commit()
 
     resp = await client.post(
         "/api/reports/",

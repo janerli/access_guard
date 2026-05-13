@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import Department, Position
@@ -12,11 +13,17 @@ from app.models.identity import Department, Position
 @pytest.fixture
 async def seed_refs(db_session: AsyncSession):
     """Вставляет эталонную должность и отдел в тестовую сессию."""
-    pos = Position(id=uuid4(), code="TEST-POS-1", name="Тестовая должность", level=1)
-    dept = Department(id=uuid4(), code="TEST-DEPT-1", name="Тестовый отдел")
-    db_session.add(pos)
-    db_session.add(dept)
-    await db_session.flush()
+    pos = (await db_session.execute(select(Position).where(Position.code == "TEST-POS-1"))).scalar_one_or_none()
+    if pos is None:
+        pos = Position(id=uuid4(), code="TEST-POS-1", name="Тестовая должность", level=1)
+        db_session.add(pos)
+
+    dept = (await db_session.execute(select(Department).where(Department.code == "TEST-DEPT-1"))).scalar_one_or_none()
+    if dept is None:
+        dept = Department(id=uuid4(), code="TEST-DEPT-1", name="Тестовый отдел")
+        db_session.add(dept)
+
+    await db_session.commit()
     return {"position_code": "TEST-POS-1", "department_code": "TEST-DEPT-1"}
 
 
