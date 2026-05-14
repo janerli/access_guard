@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 def publish_outbox() -> dict:
     """Read pending outbox events and publish to Kafka."""
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(_publish_outbox_async())
+    return asyncio.run(_publish_outbox_async())
 
 
 async def _publish_outbox_async() -> dict:
@@ -73,7 +73,7 @@ async def _publish_outbox_async() -> dict:
 def evaluate_simple_rules(audit_log_id: int) -> dict:
     """Evaluate postgres-based rules against a newly written audit entry."""
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(_evaluate_simple_async(audit_log_id))
+    return asyncio.run(_evaluate_simple_async(audit_log_id))
 
 
 async def _evaluate_simple_async(audit_log_id: int) -> dict:
@@ -130,7 +130,7 @@ async def _evaluate_simple_async(audit_log_id: int) -> dict:
 def evaluate_complex_rules() -> dict:
     """Evaluate elasticsearch-based rules (runs periodically)."""
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(_evaluate_complex_async())
+    return asyncio.run(_evaluate_complex_async())
 
 
 async def _evaluate_complex_async() -> dict:
