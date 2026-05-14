@@ -129,6 +129,9 @@ async def create_user(
     except Exception as exc:
         logger.warning("ldap_create_failed", employee_id=employee_id, error=str(exc))
 
+    # Load relationships so Pydantic serialization doesn't trigger lazy I/O
+    await db.refresh(user, attribute_names=["position", "department"])
+
     # Publish after flush — commit happens upstream (get_db or consumer)
     corr = correlation_id or uuid.uuid4()
     await _publish_user_event("user.created", user, corr)
@@ -194,6 +197,8 @@ async def _change_status(
     )
     db.add(lifecycle)
     await db.flush()
+    # Refresh server-generated updated_at without expiring other loaded attributes
+    await db.refresh(user, attribute_names=["updated_at"])
 
     if new_status == UserStatus.blocked and user.ldap_dn:
         try:
