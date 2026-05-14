@@ -172,3 +172,165 @@ async def test_departments_list(client: AsyncClient, admin_token: str, seed_refs
     assert resp.status_code == 200
     codes = [d["code"] for d in resp.json()]
     assert "TEST-DEPT-1" in codes
+
+
+async def _create_user_via_api(client: AsyncClient, admin_token: str) -> dict:
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.post(
+            "/api/identity/users",
+            json={
+                "employee_id": f"E-{uuid4().hex[:8]}",
+                "username": f"u_{uuid4().hex[:8]}",
+                "email": f"u_{uuid4().hex[:8]}@test.local",
+                "full_name": "Тестовый Пользователь",
+            },
+            headers=_headers(admin_token),
+        )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_update_user(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.patch(
+            f"/api/identity/users/{user_id}",
+            json={"full_name": "Обновлённое Имя", "email": f"updated_{uuid4().hex[:6]}@test.local"},
+            headers=_headers(admin_token),
+        )
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] == "Обновлённое Имя"
+
+
+@pytest.mark.asyncio
+async def test_delete_user(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.delete(f"/api/identity/users/{user_id}", headers=_headers(admin_token))
+    assert resp.status_code == 204
+
+    get_resp = await client.get(f"/api/identity/users/{user_id}", headers=_headers(admin_token))
+    assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reset_password(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    resp = await client.post(
+        f"/api/identity/users/{user_id}/reset-password",
+        json={"new_password": "NewSecurePassword123!"},
+        headers=_headers(admin_token),
+    )
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_list_users_with_search(client: AsyncClient, admin_token: str):
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        await client.post(
+            "/api/identity/users",
+            json={
+                "employee_id": f"E-SRCH-{uuid4().hex[:6]}",
+                "username": f"search_user_{uuid4().hex[:8]}",
+                "email": f"search_{uuid4().hex[:6]}@test.local",
+                "full_name": "Уникальное Поисковое Имя",
+            },
+            headers=_headers(admin_token),
+        )
+
+    resp = await client.get(
+        "/api/identity/users",
+        params={"search": "Уникальное Поисковое"},
+        headers=_headers(admin_token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_get_user_not_found(client: AsyncClient, admin_token: str):
+    resp = await client.get(f"/api/identity/users/{uuid4()}", headers=_headers(admin_token))
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_suspend_non_active_user(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        await client.post(f"/api/identity/users/{user_id}/suspend", headers=_headers(admin_token))
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.post(f"/api/identity/users/{user_id}/suspend", headers=_headers(admin_token))
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_restore_non_suspended_user(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.post(f"/api/identity/users/{user_id}/restore", headers=_headers(admin_token))
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_block_already_blocked_user(client: AsyncClient, admin_token: str):
+    user = await _create_user_via_api(client, admin_token)
+    user_id = user["id"]
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        await client.post(f"/api/identity/users/{user_id}/block", headers=_headers(admin_token))
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        resp = await client.post(f"/api/identity/users/{user_id}/block", headers=_headers(admin_token))
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_transfer_user_service(db_session):
+    from unittest.mock import AsyncMock, patch
+    from app.models.identity import UserExt, UserStatus, Position, Department
+    from app.modules.identity import service
+
+    pos = Position(id=uuid4(), code=f"POS-{uuid4().hex[:6]}", name="Должность", level=1)
+    dept = Department(id=uuid4(), code=f"DEPT-{uuid4().hex[:6]}", name="Отдел")
+    user = UserExt(
+        id=uuid4(),
+        employee_id=f"E-TR-{uuid4().hex[:6]}",
+        username=f"tr_{uuid4().hex[:8]}",
+        email=f"tr_{uuid4().hex[:6]}@test.local",
+        full_name="Переводимый",
+        status=UserStatus.active,
+    )
+    db_session.add(pos)
+    db_session.add(dept)
+    db_session.add(user)
+    await db_session.flush()
+
+    with patch("app.kafka.producer.get_producer", new_callable=AsyncMock) as mp:
+        mp.return_value.send = AsyncMock()
+        result = await service.transfer_user(
+            db_session, user, position_code=pos.code, department_code=dept.code
+        )
+    assert result.position_id == pos.id
+    assert result.department_id == dept.id
