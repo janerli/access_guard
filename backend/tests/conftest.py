@@ -1,70 +1,100 @@
-import asyncio
 from typing import AsyncGenerator
 from uuid import uuid4
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# Import app (triggers model registration into Base.metadata)
 from app.database import Base, get_db
 from app.main import app  # noqa: F401 — side-effect: registers all routers + models
 
 TEST_DATABASE_URL = "postgresql+asyncpg://accessguard:secret@localhost:5432/accessguard_test"
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+def _engine():
+    return create_async_engine(TEST_DATABASE_URL, echo=False)
 
 
-@pytest_asyncio.fixture(scope="session")
-async def test_engine():
-    engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+# ── Schema (runs once per session, disposes engine immediately) ───────────────
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _create_schema():
+    engine = _engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
-    yield engine
+    await engine.dispose()
+    yield
+    engine = _engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
+# ── Seed data (session-scoped, each uses its own engine that it disposes) ─────
+
 @pytest_asyncio.fixture(scope="session")
-async def seed_admin(test_engine):
-    """Создаёт системного администратора один раз на весь тестовый прогон."""
+async def seed_admin(_create_schema):
     from app.core.security import hash_password
     from app.models.admin import AdminRole, AdminUser
 
-    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with session_factory() as session:
-        existing = (await session.execute(
+    engine = _engine()
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        exists = (await session.execute(
             select(AdminUser).where(AdminUser.username == "_pytest_admin")
         )).scalar_one_or_none()
-        if not existing:
-            admin = AdminUser(
+        if not exists:
+            session.add(AdminUser(
                 id=uuid4(),
                 username="_pytest_admin",
                 email="_pytest@test.local",
                 full_name="Pytest Admin",
                 hashed_password=hash_password("TestPass123!"),
                 role=AdminRole.system_admin,
-            )
-            session.add(admin)
+            ))
             await session.commit()
+    await engine.dispose()
     return {"username": "_pytest_admin", "password": "TestPass123!"}
 
 
+@pytest_asyncio.fixture(scope="session")
+async def seed_user_ext(_create_schema) -> str:
+    from app.models.identity import UserExt, UserStatus
+
+    engine = _engine()
+    user_id: str
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        existing = (await session.execute(
+            select(UserExt).where(UserExt.employee_id == "_pytest_user")
+        )).scalar_one_or_none()
+        if existing:
+            user_id = str(existing.id)
+        else:
+            user = UserExt(
+                id=uuid4(),
+                employee_id="_pytest_user",
+                username="_pytest_userext",
+                email="_pytest_user@test.local",
+                full_name="Pytest User",
+                status=UserStatus.active,
+            )
+            session.add(user)
+            await session.commit()
+            user_id = str(user.id)
+    await engine.dispose()
+    return user_id
+
+
+# ── Per-test fixtures (each test gets its own engine + connections) ────────────
+
 @pytest_asyncio.fixture
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with session_factory() as session:
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    engine = _engine()
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
         yield session
         await session.rollback()
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -85,29 +115,3 @@ async def admin_token(client: AsyncClient, seed_admin) -> str:
     resp = await client.post("/api/auth/login", json=seed_admin)
     assert resp.status_code == 200, f"Login failed: {resp.text}"
     return resp.json()["access_token"]
-
-
-@pytest_asyncio.fixture(scope="session")
-async def seed_user_ext(test_engine) -> str:
-    """Создаёт одного UserExt один раз на весь тестовый прогон. Возвращает user_id."""
-    from uuid import uuid4
-    from app.models.identity import UserExt, UserStatus
-
-    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with session_factory() as session:
-        existing = (await session.execute(
-            select(UserExt).where(UserExt.employee_id == "_pytest_user")
-        )).scalar_one_or_none()
-        if existing:
-            return str(existing.id)
-        user = UserExt(
-            id=uuid4(),
-            employee_id="_pytest_user",
-            username="_pytest_userext",
-            email="_pytest_user@test.local",
-            full_name="Pytest User",
-            status=UserStatus.active,
-        )
-        session.add(user)
-        await session.commit()
-        return str(user.id)
