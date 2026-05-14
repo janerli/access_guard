@@ -1,6 +1,8 @@
+import asyncio
 from typing import AsyncGenerator
 from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -11,6 +13,13 @@ from app.database import Base, get_db
 from app.main import app  # noqa: F401 — side-effect: registers all routers + models
 
 TEST_DATABASE_URL = "postgresql+asyncpg://accessguard:secret@localhost:5432/accessguard_test"
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest_asyncio.fixture(scope="session")
