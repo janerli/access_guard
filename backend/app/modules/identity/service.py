@@ -163,6 +163,7 @@ async def update_user(
         if department:
             user.department_id = department.id
     await db.flush()
+    await db.refresh(user, attribute_names=["updated_at"])
 
     if user.ldap_dn:
         try:
