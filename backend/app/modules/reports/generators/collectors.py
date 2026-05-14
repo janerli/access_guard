@@ -116,18 +116,22 @@ class PostgresCollector:
 
     async def permissions_audit(self, parameters: dict) -> dict:
         from app.models.monitor import AuditLog, AuditOperation
-        from sqlalchemy import and_
+        from sqlalchemy import and_, cast, String
 
         q = select(AuditLog).where(
             AuditLog.operation == AuditOperation.role_assign,
-            AuditLog.details["is_privileged"].astext == "true",
-        ).order_by(AuditLog.timestamp.desc())
+            AuditLog.details.isnot(None),
+        ).order_by(AuditLog.timestamp.desc()).limit(5000)
         if parameters.get("date_from"):
             q = q.where(AuditLog.timestamp >= datetime.fromisoformat(parameters["date_from"]))
         if parameters.get("date_to"):
             q = q.where(AuditLog.timestamp <= datetime.fromisoformat(parameters["date_to"]))
 
         rows = (await self.db.execute(q)).scalars().all()
+        privileged = [
+            r for r in rows
+            if (r.details or {}).get("is_privileged") is True
+        ]
         return {
             "title": "Аудит привилегированных ролей",
             "headers": ["Время", "Администратор", "Объект", "Роль", "Результат"],
@@ -139,9 +143,9 @@ class PostgresCollector:
                     (r.details or {}).get("role_code", "—"),
                     r.result.value,
                 ]
-                for r in rows
+                for r in privileged
             ],
-            "count": len(rows),
+            "count": len(privileged),
         }
 
     async def compliance_pg_part(self, parameters: dict) -> dict:
@@ -181,12 +185,12 @@ class ElasticCollector:
             resp = await self.es.search(
                 index="audit-events-*",
                 body={
-                    "query": {"range": {"timestamp": {"gte": date_from, "lte": date_to}}},
+                    "query": {"range": {"@timestamp": {"gte": date_from, "lte": date_to}}},
                     "aggs": {
-                        "by_module": {"terms": {"field": "module", "size": 10}},
-                        "by_operation": {"terms": {"field": "operation", "size": 20}},
-                        "by_result": {"terms": {"field": "result", "size": 5}},
-                        "by_day": {"date_histogram": {"field": "timestamp", "calendar_interval": "day"}},
+                        "by_module": {"terms": {"field": "module.keyword", "size": 10}},
+                        "by_operation": {"terms": {"field": "operation.keyword", "size": 20}},
+                        "by_result": {"terms": {"field": "result.keyword", "size": 5}},
+                        "by_day": {"date_histogram": {"field": "@timestamp", "calendar_interval": "day"}},
                     },
                     "size": 0,
                 },
@@ -219,8 +223,8 @@ class ElasticCollector:
             resp = await self.es.search(
                 index="audit-events-*",
                 body={
-                    "query": {"range": {"timestamp": {"gte": threshold}}},
-                    "aggs": {"active_users": {"terms": {"field": "actor_username", "size": 10000}}},
+                    "query": {"range": {"@timestamp": {"gte": threshold}}},
+                    "aggs": {"active_users": {"terms": {"field": "actor_username.keyword", "size": 10000}}},
                     "size": 0,
                 },
             )
@@ -228,7 +232,7 @@ class ElasticCollector:
 
             all_resp = await self.es.search(
                 index="audit-events-*",
-                body={"aggs": {"all_users": {"terms": {"field": "actor_username", "size": 10000}}}, "size": 0},
+                body={"aggs": {"all_users": {"terms": {"field": "actor_username.keyword", "size": 10000}}}, "size": 0},
             )
             all_users = {b["key"] for b in all_resp["aggregations"]["all_users"]["buckets"]}
             inactive = all_users - active
@@ -254,8 +258,8 @@ class ElasticCollector:
             resp = await self.es.search(
                 index="audit-events-*",
                 body={
-                    "query": {"range": {"timestamp": {"gte": date_from, "lte": date_to}}},
-                    "aggs": {"by_result": {"terms": {"field": "result", "size": 5}}},
+                    "query": {"range": {"@timestamp": {"gte": date_from, "lte": date_to}}},
+                    "aggs": {"by_result": {"terms": {"field": "result.keyword", "size": 5}}},
                     "size": 0,
                 },
             )

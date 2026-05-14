@@ -11,7 +11,7 @@ logger = structlog.get_logger()
 REPORTS_DIR = os.environ.get("REPORTS_DIR", "/tmp/reports")
 
 
-@celery_app.task(name="reports.generate_report")
+@celery_app.task(name="reports.generate_report", time_limit=300, soft_time_limit=240)
 def generate_report(report_id: str) -> dict:
     import asyncio
     return asyncio.run(_generate_async(report_id))
