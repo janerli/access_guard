@@ -60,8 +60,11 @@ def _gen_employee(employee_id: Optional[str] = None) -> dict:
 
 
 async def _publish_kafka(event_type: str, employee_id: str, payload: dict) -> str:
+    import asyncio
+    import logging
     from aiokafka import AIOKafkaProducer
 
+    log = logging.getLogger("hr-mock")
     event_id = str(uuid.uuid4())
     message = {
         "event_id": event_id,
@@ -73,15 +76,27 @@ async def _publish_kafka(event_type: str, employee_id: str, payload: dict) -> st
         "payload": payload,
     }
 
+    log.info(f"Connecting to Kafka at {KAFKA_SERVERS}...")
     producer = AIOKafkaProducer(
         bootstrap_servers=KAFKA_SERVERS,
         value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
+        request_timeout_ms=4000,
+        connections_max_idle_ms=5000,
+        metadata_max_age_ms=5000,
     )
-    await producer.start()
     try:
-        await producer.send("hr.events", value=message, key=employee_id.encode())
+        await asyncio.wait_for(producer.start(), timeout=5)
+        log.info("Kafka connected, sending message...")
+        await asyncio.wait_for(
+            producer.send_and_wait("hr.events", value=message, key=employee_id.encode()),
+            timeout=5,
+        )
+        log.info(f"Message sent: {event_id}")
     finally:
-        await producer.stop()
+        try:
+            await asyncio.wait_for(producer.stop(), timeout=3)
+        except Exception:
+            pass
 
     return event_id
 
@@ -138,20 +153,30 @@ async def publish_event(event: HREventRequest):
 
 
 @app.post("/events/seed")
-async def seed_employees(count: int = 10):
-    """Создаёт N новых сотрудников и публикует hire-события в Kafka."""
+async def seed_employees(count: int = 10, kafka: bool = True):
+    """Создаёт N новых сотрудников. kafka=false — пропустить публикацию в Kafka."""
+    import logging
+    log = logging.getLogger("hr-mock")
     results = []
+    kafka_errors = 0
     for _ in range(count):
         emp = _gen_employee()
-        event = HREventRequest(
-            event_type="hire",
-            employee_id=emp["employee_id"],
-            effective_date=emp["hire_date"],
-            data=emp,
-        )
-        result = await publish_event(event)
-        results.append({"employee_id": emp["employee_id"], **result})
-    return {"created": len(results), "employees": results}
+        _employees[emp["employee_id"]] = emp
+        if kafka:
+            try:
+                log.info(f"Publishing hire event for {emp['employee_id']}...")
+                event_id = await _publish_kafka("hire", emp["employee_id"], {
+                    **emp, "effective_date": emp["hire_date"],
+                })
+                results.append({"employee_id": emp["employee_id"], "published": True, "event_id": event_id})
+                log.info(f"Published {emp['employee_id']}")
+            except Exception as exc:
+                log.warning(f"Kafka publish failed for {emp['employee_id']}: {exc}")
+                kafka_errors += 1
+                results.append({"employee_id": emp["employee_id"], "published": False, "error": str(exc)})
+        else:
+            results.append({"employee_id": emp["employee_id"], "published": False, "skipped": True})
+    return {"created": len(results), "kafka_errors": kafka_errors, "employees": results}
 
 
 @app.get("/structure/departments")

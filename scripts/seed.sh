@@ -65,14 +65,19 @@ fi
 # ── 4. Seed HR-mock сотрудников ───────────────────────────────────────────────
 echo "→ Создание 20 тестовых сотрудников через HR-mock..."
 if curl -sf "http://localhost:8001/health" > /dev/null 2>&1; then
-  curl -sf -X POST "http://localhost:8001/events/seed?count=20" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  Создано: {d[\"created\"]} сотрудников')"
+  HR_RESULT=$(curl -s -X POST "http://localhost:8001/events/seed?count=20" 2>/dev/null)
+  if echo "$HR_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  Создано: {d[\"created\"]} сотрудников')" 2>/dev/null; then
+    :
+  else
+    echo "  HR-mock ответил (Kafka может быть недоступна): ${HR_RESULT:0:120}"
+  fi
 else
   echo "  HR-mock недоступен, пропускаем"
 fi
 
 # ── 4b. Расширенный seed (сотрудники, аудит, отчёты) ─────────────────────────
 echo "→ Генерация демо-данных (сотрудники, аудит, отчёты)..."
-docker compose exec -T -e PYTHONPATH=/app backend python /app/scripts/seed_data.py && echo "  Демо-данные созданы." || echo "  seed_data.py завершился с ошибкой (возможно данные уже существуют)"
+MSYS_NO_PATHCONV=1 docker compose exec -T -e PYTHONPATH=/app backend python /app/scripts/seed_data.py && echo "  Демо-данные созданы." || echo "  seed_data.py завершился с ошибкой (возможно данные уже существуют)"
 
 # ── 5. Импорт Kibana дашбордов ────────────────────────────────────────────────
 echo "→ Импорт дашбордов Kibana..."

@@ -14,7 +14,7 @@ REPORTS_DIR = os.environ.get("REPORTS_DIR", "/tmp/reports")
 @celery_app.task(name="reports.generate_report")
 def generate_report(report_id: str) -> dict:
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(_generate_async(report_id))
+    return asyncio.run(_generate_async(report_id))
 
 
 async def _generate_async(report_id: str) -> dict:
@@ -92,7 +92,7 @@ async def _generate_async(report_id: str) -> dict:
 @celery_app.task(name="reports.check_schedules")
 def check_report_schedules() -> dict:
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(_check_schedules_async())
+    return asyncio.run(_check_schedules_async())
 
 
 async def _check_schedules_async() -> dict:

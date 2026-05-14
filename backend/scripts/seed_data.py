@@ -93,7 +93,7 @@ OPERATIONS = [
 
 
 async def run():
-    from sqlalchemy import select, func
+    from sqlalchemy import select, text
     from app.database import AsyncSessionLocal
     from app.models.admin import AdminUser, AdminRole
     from app.models.identity import Department, Position, UserExt, UserStatus
@@ -101,6 +101,7 @@ async def run():
     from app.models.monitor import (
         AuditLog, AuditModule, AuditOperation, AuditResult, AuditTargetType,
         Alert, AlertRule, AlertStatus, OutboxEvent, OutboxStatus,
+        NotificationChannel,
     )
     from app.core.security import hash_password
     from app.kafka.topics import TOPIC_AUDIT_EVENTS
@@ -117,7 +118,10 @@ async def run():
         ]
         admin_objs: list[AdminUser] = []
         for username, email, full_name, role, password in admins_data:
-            existing = (await db.execute(select(AdminUser).where(AdminUser.username == username))).scalar_one_or_none()
+            from sqlalchemy import or_
+            existing = (await db.execute(
+                select(AdminUser).where(or_(AdminUser.username == username, AdminUser.email == email))
+            )).scalar_one_or_none()
             if existing:
                 admin_objs.append(existing)
                 continue
@@ -159,7 +163,9 @@ async def run():
 
         # ── 4. Пользователи ───────────────────────────────────────────────────
         print("→ Создание 50 сотрудников...")
-        existing_count = (await db.execute(select(func.count(UserExt.id)))).scalar_one()
+        existing_count = (await db.execute(
+            select(__import__('sqlalchemy').func.count(UserExt.id))
+        )).scalar_one()
         dept_codes = list(dept_map.keys())
         pos_codes = list(pos_map.keys())
         users_created = []
@@ -201,7 +207,7 @@ async def run():
         manager_role = (await db.execute(select(Role).where(Role.code == "manager"))).scalar_one_or_none()
         roles_assigned = 0
         if employee_role:
-            for u in users_all:
+            for u in users_all[:len(users_all)]:
                 existing_role = (await db.execute(
                     select(UserRole).where(UserRole.user_id == u.id, UserRole.role_id == employee_role.id)
                 )).scalar_one_or_none()
@@ -225,7 +231,9 @@ async def run():
 
         # ── 6. ~5000 записей audit_log за 90 дней ────────────────────────────
         print("→ Генерация ~5000 записей audit_log...")
-        existing_audit = (await db.execute(select(func.count(AuditLog.id)))).scalar_one()
+        existing_audit = (await db.execute(
+            select(__import__('sqlalchemy').func.count(AuditLog.id))
+        )).scalar_one()
 
         if existing_audit < 1000:
             now = datetime.now(timezone.utc)
@@ -329,7 +337,9 @@ async def run():
 
         # ── 7. Создать тестовые алерты ────────────────────────────────────────
         print("→ Создание тестовых алертов...")
-        existing_alerts = (await db.execute(select(func.count(Alert.id)))).scalar_one()
+        existing_alerts = (await db.execute(
+            select(__import__('sqlalchemy').func.count(Alert.id))
+        )).scalar_one()
         if existing_alerts < 5:
             rules = (await db.execute(select(AlertRule).limit(4))).scalars().all()
             now = datetime.now(timezone.utc)
@@ -355,15 +365,15 @@ async def run():
         import os
         from app.models.reports import Report, ReportTemplate, ReportFormat, ReportStatus
 
-        existing_reports = (await db.execute(select(func.count(Report.id)))).scalar_one()
+        existing_reports = (await db.execute(
+            select(__import__('sqlalchemy').func.count(Report.id))
+        )).scalar_one()
         if existing_reports < 3:
             reports_dir = os.environ.get("REPORTS_DIR", "/tmp/reports")
             os.makedirs(reports_dir, exist_ok=True)
             templates_to_seed = ["users_report", "access_requests_report", "roles_matrix"]
             for tmpl_code in templates_to_seed:
-                tmpl = (await db.execute(
-                    select(ReportTemplate).where(ReportTemplate.code == tmpl_code)
-                )).scalar_one_or_none()
+                tmpl = (await db.execute(select(ReportTemplate).where(ReportTemplate.code == tmpl_code))).scalar_one_or_none()
                 if not tmpl:
                     continue
                 from app.modules.reports.generators.renderers import CsvRenderer

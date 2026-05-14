@@ -67,7 +67,7 @@ async def create_report(
         status=ReportStatus.pending,
     )
     db.add(report)
-    await db.flush()
+    await db.commit()  # commit before dispatch so Celery task can find the record
 
     from app.modules.reports.tasks import generate_report
     generate_report.delay(str(report.id))

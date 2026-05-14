@@ -118,7 +118,10 @@ async def run():
         ]
         admin_objs: list[AdminUser] = []
         for username, email, full_name, role, password in admins_data:
-            existing = (await db.execute(select(AdminUser).where(AdminUser.username == username))).scalar_one_or_none()
+            from sqlalchemy import or_
+            existing = (await db.execute(
+                select(AdminUser).where(or_(AdminUser.username == username, AdminUser.email == email))
+            )).scalar_one_or_none()
             if existing:
                 admin_objs.append(existing)
                 continue
