@@ -6,25 +6,31 @@
 ## Быстрый старт
 
 ```bash
-# 1. Скопировать конфиг (при необходимости изменить JWT_SECRET)
+# 1. Скопировать конфиг
 cp .env.example .env
 
 # 2. Запустить все сервисы
 docker compose up -d
 
-# 3. Дождаться готовности (30–60 секунд) и заполнить демо-данными
+# 3. Подождать 2–3 минуты пока поднимутся Kafka, Elasticsearch и Kibana
+#    Проверить готовность:
+docker compose ps
+
+# 4. Заполнить демо-данными и импортировать Kibana-дашборды
 bash scripts/seed.sh
 ```
 
+> **На сервере** замени `localhost` на IP-адрес сервера во всех адресах ниже.
+
 После этого открыть:
 
-| Сервис      | Адрес                      | Назначение                       |
-|-------------|----------------------------|----------------------------------|
-| Frontend    | http://localhost:5173      | Основной интерфейс               |
-| API Swagger | http://localhost:8000/docs | Документация REST API            |
-| Kibana      | http://localhost:5601      | Дашборды событий безопасности    |
-| MailHog     | http://localhost:8025      | Перехват email-оповещений        |
-| HR-mock     | http://localhost:8001/docs | Симулятор кадровой системы       |
+| Сервис      | Адрес                     | Назначение                       |
+|-------------|---------------------------|----------------------------------|
+| Frontend    | http://localhost:5173     | Основной интерфейс               |
+| API Swagger | http://localhost:8000/docs| Документация REST API            |
+| Kibana      | http://localhost:5601     | Дашборды событий безопасности    |
+| MailHog     | http://localhost:8025     | Перехват email-оповещений        |
+| HR-mock     | http://localhost:8001/docs| Симулятор кадровой системы       |
 
 ## Учётные записи (после seed.sh)
 
@@ -34,6 +40,98 @@ bash scripts/seed.sh
 | security_admin | Security123456 | Офицер безопасности     |
 | hr_admin       | HrAdmin123456  | HR-оператор             |
 | auditor        | Auditor123456  | Аудитор                 |
+
+## Развёртывание на сервере
+
+```bash
+# Установить Docker
+curl -fsSL https://get.docker.com | sh
+
+# Клонировать репозиторий
+git clone <repo-url> access_guard
+cd access_guard
+
+# Настроить окружение
+cp .env.example .env
+
+# Запустить
+docker compose up -d
+
+# Подождать 2–3 минуты, затем seed
+bash scripts/seed.sh
+```
+
+Сервисы будут доступны на `http://<IP-сервера>:<порт>`.
+
+## Kibana — дашборды
+
+Дашборды импортируются автоматически через `seed.sh`. Если нужно импортировать вручную:
+
+```bash
+bash scripts/kibana-import.sh
+```
+
+Kibana доступна по адресу `http://localhost:5601`.
+Перейти к дашбордам: **Analytics → Dashboards**.
+
+Доступные дашборды:
+- **Security Overview** — общая статистика событий
+- **User Activity** — активность пользователей
+- **Access Control** — изменения ролей и заявки
+- **Security Incidents** — неудачные входы и критические операции
+- **Compliance Overview** — привилегированные действия и ошибки
+
+> Данные в дашбордах появятся после того как outbox-publisher отправит события в Elasticsearch (Celery-задача `monitor.publish_outbox` запускается каждые 10 сек).
+
+## Диагностика
+
+```bash
+# Статус всех контейнеров
+docker compose ps
+
+# Логи конкретного сервиса
+docker compose logs -f backend
+docker compose logs -f worker
+docker compose logs -f kafka
+
+# Проверить что Kafka-топики созданы
+docker compose logs kafka-init
+
+# Перезапустить упавший сервис
+docker compose restart backend
+
+# Принудительно переимпортировать Kibana-дашборды
+bash scripts/kibana-import.sh
+```
+
+### Типичные проблемы
+
+**Kafka не стартует** — нужно подождать 1–2 минуты, Zookeeper поднимается медленно:
+```bash
+docker compose logs kafka --tail=20
+```
+
+**Kibana недоступна** — поднимается 1–2 минуты после Elasticsearch:
+```bash
+docker compose logs kibana --tail=20
+```
+
+**seed.sh завис на HR-mock** — Kafka ещё не готова, seed продолжит без Kafka-событий, это нормально.
+
+**Отчёт застрял в статусе pending** — проверить что worker запущен:
+```bash
+docker compose logs worker --tail=30
+```
+
+## Сброс данных
+
+```bash
+# Полный сброс (удаляет все данные, требует подтверждения)
+bash scripts/reset.sh
+
+# После сброса — повторный запуск
+docker compose up -d && sleep 60 && bash scripts/seed.sh
+```
 
 ## Архитектура
 
@@ -55,8 +153,6 @@ HR-mock ──Kafka(hr.events)──► Identity Module ──Kafka(identity.use
                                                           │
                                                    Reports Module
 ```
-
-Подробная архитектурная документация: [`docs/architecture.md`](docs/architecture.md)
 
 ## Модули
 
@@ -98,16 +194,16 @@ Elasticsearch 8.11, Logstash 8.11, Kibana 8.11, Docker Compose
 
 ## Kafka-топики
 
-| Топик                  | Продюсер     | Консьюмер          |
-|------------------------|--------------|--------------------|
-| `hr.events`            | HR-mock      | Identity           |
-| `identity.users`       | Identity     | Access, Monitor    |
-| `identity.lifecycle`   | Identity     | Monitor            |
-| `access.roles`         | Access       | Monitor            |
-| `access.requests`      | Access       | Monitor            |
-| `monitor.alerts`       | Monitor      | Notification svc   |
-| `audit.events`         | Outbox pub.  | Logstash → ES      |
-| `reports.notifications`| Reports      | —                  |
+| Топик                   | Продюсер    | Консьюмер          |
+|-------------------------|-------------|--------------------|
+| `hr.events`             | HR-mock     | Identity           |
+| `identity.users`        | Identity    | Access, Monitor    |
+| `identity.lifecycle`    | Identity    | Monitor            |
+| `access.roles`          | Access      | Monitor            |
+| `access.requests`       | Access      | Monitor            |
+| `monitor.alerts`        | Monitor     | Notification svc   |
+| `audit.events`          | Outbox pub. | Logstash → ES      |
+| `reports.notifications` | Reports     | —                  |
 
 ## Разработка
 
@@ -127,6 +223,24 @@ docker compose logs -f backend worker beat
 # Сброс данных (с подтверждением)
 bash scripts/reset.sh
 ```
+
+## Тесты
+
+```bash
+# Все тесты
+docker compose exec backend pytest -v
+
+# С покрытием
+docker compose exec backend pytest --cov=app --cov-report=html
+
+# Конкретный модуль
+docker compose exec backend pytest tests/test_identity/ -v
+docker compose exec backend pytest tests/test_access/ -v
+docker compose exec backend pytest tests/test_monitor/ -v
+docker compose exec backend pytest tests/test_reports/ -v
+```
+
+Цель покрытия: **≥ 70%**
 
 ## Структура проекта
 
@@ -166,24 +280,6 @@ access_guard/
     ├── elastic-init.sh      # Инициализация ES index templates
     └── kibana-import.sh     # Импорт Kibana дашбордов
 ```
-
-## Тесты
-
-```bash
-# Все тесты
-docker compose exec backend pytest -v
-
-# С покрытием
-docker compose exec backend pytest --cov=app --cov-report=html
-
-# Конкретный модуль
-docker compose exec backend pytest tests/test_identity/ -v
-docker compose exec backend pytest tests/test_access/ -v
-docker compose exec backend pytest tests/test_monitor/ -v
-docker compose exec backend pytest tests/test_reports/ -v
-```
-
-Цель покрытия: **≥ 70%**
 
 ## Полная спецификация
 
