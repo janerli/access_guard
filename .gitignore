@@ -30,6 +30,10 @@ dist/
 # Reports output
 backend/reports_output/
 
+# Logs
+backend/logs/
+*.log
+
 # IDE
 .vscode/
 .idea/
