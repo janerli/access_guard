@@ -18,14 +18,14 @@ def publish_outbox() -> dict:
 
 async def _publish_outbox_async() -> dict:
     from sqlalchemy import select, update
-    from app.database import AsyncSessionLocal
+    from app.database import TaskAsyncSessionLocal
     from app.kafka.producer import publish_event
     from app.kafka.events import KafkaEvent
     from app.models.monitor import OutboxEvent, OutboxStatus
 
     published = 0
     failed = 0
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         try:
             rows = (await db.execute(
                 select(OutboxEvent)
@@ -78,13 +78,13 @@ def evaluate_simple_rules(audit_log_id: int) -> dict:
 
 async def _evaluate_simple_async(audit_log_id: int) -> dict:
     from sqlalchemy import select
-    from app.database import AsyncSessionLocal
+    from app.database import TaskAsyncSessionLocal
     from app.models.monitor import AuditLog, AlertRule, AlertDataSource
     from app.modules.monitor import alert_service
     from app.modules.monitor.rules import SIMPLE_RULES
 
     fired = 0
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         try:
             entry = (await db.execute(
                 select(AuditLog).where(AuditLog.id == audit_log_id)
@@ -135,14 +135,14 @@ def evaluate_complex_rules() -> dict:
 
 async def _evaluate_complex_async() -> dict:
     from sqlalchemy import select
-    from app.database import AsyncSessionLocal
+    from app.database import TaskAsyncSessionLocal
     from app.elastic.client import get_elastic_client as get_es_client
     from app.models.monitor import AlertRule, AlertDataSource
     from app.modules.monitor import alert_service
     from app.modules.monitor.rules import COMPLEX_RULES
 
     fired = 0
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         try:
             rules = (await db.execute(
                 select(AlertRule).where(

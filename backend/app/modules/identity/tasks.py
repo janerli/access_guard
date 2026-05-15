@@ -6,7 +6,7 @@ import structlog
 from sqlalchemy import select
 
 from app.celery_app import celery_app
-from app.database import AsyncSessionLocal
+from app.database import TaskAsyncSessionLocal
 from app.models.identity import UserExt, UserStatus
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ async def _cleanup_blocked_users_async():
     from app.modules.identity.service import delete_user
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=_BLOCKED_DELETE_DAYS)
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         result = await db.execute(
             select(UserExt).where(
                 UserExt.status == UserStatus.blocked,
@@ -56,7 +56,7 @@ async def _reconcile_async():
             logger.error("hr_reconcile_fetch_failed", error=str(exc))
             return
 
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         for emp in hr_employees:
             if emp.get("status") != "active":
                 continue

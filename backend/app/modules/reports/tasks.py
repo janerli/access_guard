@@ -20,14 +20,14 @@ def generate_report(report_id: str) -> dict:
 async def _generate_async(report_id: str) -> dict:
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
-    from app.database import AsyncSessionLocal
+    from app.database import TaskAsyncSessionLocal
     from app.elastic.client import get_elastic_client
     from app.models.reports import Report, ReportStatus, ReportTemplate
     from app.modules.reports.generators.base import GENERATORS
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         try:
             report = (await db.execute(
                 select(Report).options(selectinload(Report.template)).where(Report.id == report_id)
@@ -98,11 +98,11 @@ def check_report_schedules() -> dict:
 async def _check_schedules_async() -> dict:
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
-    from app.database import AsyncSessionLocal
+    from app.database import TaskAsyncSessionLocal
     from app.models.reports import Report, ReportSchedule, ReportStatus
 
     triggered = 0
-    async with AsyncSessionLocal() as db:
+    async with TaskAsyncSessionLocal() as db:
         try:
             schedules = (await db.execute(
                 select(ReportSchedule)

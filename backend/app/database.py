@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
@@ -13,6 +14,16 @@ engine = create_async_engine(
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+# Отдельный engine без пула для Celery-задач.
+# asyncio.run() создаёт новый event loop, соединения из основного пула
+# несовместимы с ним — поэтому NullPool (новое соединение на каждый вызов).
+_task_engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+TaskAsyncSessionLocal = async_sessionmaker(
+    _task_engine,
     class_=AsyncSession,
     expire_on_commit=False,
 )
