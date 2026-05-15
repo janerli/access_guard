@@ -9,7 +9,8 @@
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\janerli\\\\desktop\\\\access_guard\\\\frontend\" -Recurse -Force | Where-Object { $_.PSIsContainer } | Select-Object FullName | Sort-Object FullName)",
       "PowerShell(tree *)",
       "Bash(Get-ChildItem *)",
-      "Bash(ls *)"
+      "Bash(ls *)",
+      "Bash(python3 *)"
     ]
   }
 }
