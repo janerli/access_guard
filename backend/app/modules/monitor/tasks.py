@@ -8,7 +8,7 @@ from app.celery_app import celery_app
 logger = structlog.get_logger()
 
 
-@celery_app.task(name="monitor.publish_outbox")
+@celery_app.task(name="monitor.publish_outbox", time_limit=60, soft_time_limit=50)
 def publish_outbox() -> dict:
     """Read pending outbox events and publish to Kafka."""
     import asyncio
@@ -18,64 +18,64 @@ def publish_outbox() -> dict:
 async def _publish_outbox_async() -> dict:
     from sqlalchemy import select, update as sa_update
     from app.database import TaskAsyncSessionLocal
-    from app.kafka.producer import publish_event
+    from app.kafka.producer import task_producer
     from app.kafka.events import KafkaEvent
     from app.models.monitor import OutboxEvent, OutboxStatus
 
     published = 0
     failed = 0
-    async with TaskAsyncSessionLocal() as db:
-        try:
-            rows = (await db.execute(
-                select(OutboxEvent)
-                .where(OutboxEvent.status == OutboxStatus.pending)
-                .limit(100)
-                .with_for_update(skip_locked=True)
-            )).scalars().all()
+    async with task_producer() as producer:
+        async with TaskAsyncSessionLocal() as db:
+            try:
+                rows = (await db.execute(
+                    select(OutboxEvent)
+                    .where(OutboxEvent.status == OutboxStatus.pending)
+                    .limit(100)
+                    .with_for_update(skip_locked=True)
+                )).scalars().all()
 
-            for row in rows:
-                row_id = row.id
-                audit_log_id = row.audit_log_id
-                current_attempts = row.attempts or 0
+                for row in rows:
+                    row_id = row.id
+                    current_attempts = row.attempts or 0
 
-                sp = await db.begin_nested()
-                try:
-                    event = KafkaEvent(
-                        event_type="audit.event",
-                        producer="monitor",
-                        payload=row.payload,
-                    )
-                    await publish_event(row.topic, event)
-                    await db.execute(
-                        sa_update(OutboxEvent)
-                        .where(OutboxEvent.id == row_id)
-                        .values(status=OutboxStatus.published, published_at=datetime.now(timezone.utc))
-                    )
-                    await sp.commit()
-                    published += 1
-                except Exception as exc:
-                    await sp.rollback()
-                    new_attempts = current_attempts + 1
-                    sp2 = await db.begin_nested()
+                    sp = await db.begin_nested()
                     try:
-                        values: dict = {"attempts": new_attempts}
-                        if new_attempts >= 3:
-                            values["status"] = OutboxStatus.failed
+                        event = KafkaEvent(
+                            event_type="audit.event",
+                            producer="monitor",
+                            payload=row.payload,
+                        )
+                        await producer.send(row.topic, value=event.model_dump(mode="json"))
                         await db.execute(
                             sa_update(OutboxEvent)
                             .where(OutboxEvent.id == row_id)
-                            .values(**values)
+                            .values(status=OutboxStatus.published, published_at=datetime.now(timezone.utc))
                         )
-                        await sp2.commit()
-                    except Exception:
-                        await sp2.rollback()
-                    failed += 1
-                    logger.warning("outbox_publish_failed", outbox_id=str(row_id), error=str(exc))
+                        await sp.commit()
+                        published += 1
+                    except Exception as exc:
+                        await sp.rollback()
+                        new_attempts = current_attempts + 1
+                        sp2 = await db.begin_nested()
+                        try:
+                            values: dict = {"attempts": new_attempts}
+                            if new_attempts >= 3:
+                                values["status"] = OutboxStatus.failed
+                            await db.execute(
+                                sa_update(OutboxEvent)
+                                .where(OutboxEvent.id == row_id)
+                                .values(**values)
+                            )
+                            await sp2.commit()
+                        except Exception:
+                            await sp2.rollback()
+                        failed += 1
+                        logger.warning("outbox_publish_failed", outbox_id=str(row_id), error=str(exc))
 
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     return {"published": published, "failed": failed}
 
@@ -137,7 +137,7 @@ async def _evaluate_simple_async(audit_log_id: int) -> dict:
     return {"fired": fired}
 
 
-@celery_app.task(name="monitor.evaluate_complex_rules")
+@celery_app.task(name="monitor.evaluate_complex_rules", time_limit=90, soft_time_limit=80)
 def evaluate_complex_rules() -> dict:
     """Evaluate elasticsearch-based rules (runs periodically)."""
     import asyncio
@@ -146,13 +146,15 @@ def evaluate_complex_rules() -> dict:
 
 async def _evaluate_complex_async() -> dict:
     from sqlalchemy import select
+    from elasticsearch import AsyncElasticsearch
+    from app.config import settings
     from app.database import TaskAsyncSessionLocal
-    from app.elastic.client import get_elastic_client as get_es_client
     from app.models.monitor import AlertRule, AlertDataSource
     from app.modules.monitor import alert_service
     from app.modules.monitor.rules import COMPLEX_RULES
 
     fired = 0
+    es = AsyncElasticsearch(hosts=[settings.ELASTICSEARCH_URL], retry_on_timeout=True, max_retries=3)
     async with TaskAsyncSessionLocal() as db:
         try:
             rules = (await db.execute(
@@ -161,8 +163,6 @@ async def _evaluate_complex_async() -> dict:
                     AlertRule.data_source == AlertDataSource.elasticsearch,
                 )
             )).scalars().all()
-
-            es = get_es_client()
             for rule in rules:
                 checker = COMPLEX_RULES.get(rule.code)
                 if not checker:
@@ -185,6 +185,8 @@ async def _evaluate_complex_async() -> dict:
             await db.commit()
         except Exception:
             await db.rollback()
+            await es.close()
             raise
 
+    await es.close()
     return {"fired": fired}

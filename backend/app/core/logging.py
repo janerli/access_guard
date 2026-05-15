@@ -48,6 +48,10 @@ def configure_logging() -> None:
 
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("alembic").setLevel(logging.INFO)
+    # Uvicorn writes plain-text access/error lines to the root logger.
+    # Disable propagation so they don't pollute app.log and break Logstash JSON parsing.
+    for _uvicorn_logger in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        logging.getLogger(_uvicorn_logger).propagate = False
 
 
 logger = structlog.get_logger()

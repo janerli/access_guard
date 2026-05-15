@@ -73,14 +73,15 @@ async def _generate_async(report_id: str) -> dict:
             # Publish notification
             try:
                 from app.kafka.events import KafkaEvent
-                from app.kafka.producer import publish_event
+                from app.kafka.producer import task_producer
                 from app.kafka.topics import TOPIC_REPORTS_NOTIFICATIONS
                 event = KafkaEvent(
                     event_type="report.ready",
                     producer="reports",
                     payload={"report_id": report_id, "template_code": template.code, "format": ext},
                 )
-                await publish_event(TOPIC_REPORTS_NOTIFICATIONS, event)
+                async with task_producer() as producer:
+                    await producer.send(TOPIC_REPORTS_NOTIFICATIONS, value=event.model_dump(mode="json"))
             except Exception as exc:
                 logger.warning("report_notification_failed", error=str(exc))
 
