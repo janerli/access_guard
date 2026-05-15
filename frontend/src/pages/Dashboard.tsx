@@ -108,6 +108,14 @@ export default function Dashboard() {
             className="text-sm text-blue-600 hover:underline">
             MailHog ↗
           </a>
+          <a href="http://localhost:8080" target="_blank" rel="noreferrer"
+            className="text-sm text-blue-600 hover:underline">
+            Kafka UI ↗
+          </a>
+          <a href="http://localhost:5555" target="_blank" rel="noreferrer"
+            className="text-sm text-blue-600 hover:underline">
+            Flower ↗
+          </a>
         </div>
       </div>
     </div>
