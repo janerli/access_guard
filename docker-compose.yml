@@ -131,6 +131,7 @@ services:
     volumes:
       - ./logstash/pipeline:/usr/share/logstash/pipeline
       - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - app_logs:/app/logs
     environment:
       LS_JAVA_OPTS: "-Xmx256m -Xms256m"
     restart: unless-stopped
@@ -177,6 +178,7 @@ services:
     environment:
       PYTHONPATH: /app
       REPORTS_DIR: /app/reports_output
+      LOGS_DIR: /app/logs
     ports:
       - "8000:8000"
     depends_on:
@@ -187,6 +189,7 @@ services:
     volumes:
       - ./backend:/app
       - reports_files:/app/reports_output
+      - app_logs:/app/logs
     restart: unless-stopped
 
   kafka-consumer:
@@ -195,6 +198,7 @@ services:
     env_file: .env
     environment:
       PYTHONPATH: /app
+      LOGS_DIR: /app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -202,6 +206,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - app_logs:/app/logs
     restart: unless-stopped
 
   worker:
@@ -211,6 +216,7 @@ services:
     environment:
       PYTHONPATH: /app
       REPORTS_DIR: /app/reports_output
+      LOGS_DIR: /app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -219,6 +225,7 @@ services:
     volumes:
       - ./backend:/app
       - reports_files:/app/reports_output
+      - app_logs:/app/logs
     restart: unless-stopped
 
   beat:
@@ -227,6 +234,7 @@ services:
     env_file: .env
     environment:
       PYTHONPATH: /app
+      LOGS_DIR: /app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,6 +242,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - app_logs:/app/logs
     restart: unless-stopped
 
   frontend:
@@ -254,3 +263,4 @@ volumes:
   kafka_data:
   elasticsearch_data:
   reports_files:
+  app_logs:

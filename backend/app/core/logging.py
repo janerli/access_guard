@@ -1,7 +1,12 @@
 import logging
+import os
+from logging.handlers import RotatingFileHandler
+
 import structlog
 
 from app.config import settings
+
+LOGS_DIR = os.environ.get("LOGS_DIR", "/app/logs")
 
 
 def configure_logging() -> None:
@@ -25,10 +30,22 @@ def configure_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-    logging.basicConfig(
-        level=log_level,
-        format="%(message)s",
-    )
+    logging.basicConfig(level=log_level, format="%(message)s")
+
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(LOGS_DIR, "app.log"),
+            maxBytes=50 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        logging.root.addHandler(file_handler)
+    except Exception:
+        pass  # log dir not mounted — stdout only
+
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("alembic").setLevel(logging.INFO)
 

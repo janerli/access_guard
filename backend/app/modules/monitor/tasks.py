@@ -17,11 +17,11 @@ def publish_outbox() -> dict:
 
 
 async def _publish_outbox_async() -> dict:
-    from sqlalchemy import select, update
+    from sqlalchemy import select, update as sa_update
     from app.database import TaskAsyncSessionLocal
     from app.kafka.producer import publish_event
     from app.kafka.events import KafkaEvent
-    from app.models.monitor import OutboxEvent, OutboxStatus
+    from app.models.monitor import OutboxEvent, OutboxStatus, AuditLog
 
     published = 0
     failed = 0
@@ -35,31 +35,48 @@ async def _publish_outbox_async() -> dict:
             )).scalars().all()
 
             for row in rows:
+                row_id = row.id
+                audit_log_id = row.audit_log_id
+                current_attempts = row.attempts or 0
+
+                sp = await db.begin_nested()
                 try:
-                    payload = row.payload
                     event = KafkaEvent(
                         event_type="audit.event",
                         producer="monitor",
-                        payload=payload,
+                        payload=row.payload,
                     )
                     await publish_event(row.topic, event)
-                    row.status = OutboxStatus.published
-                    row.published_at = datetime.now(timezone.utc)
-
-                    from sqlalchemy import update as sa_update
-                    from app.models.monitor import AuditLog
+                    await db.execute(
+                        sa_update(OutboxEvent)
+                        .where(OutboxEvent.id == row_id)
+                        .values(status=OutboxStatus.published, published_at=datetime.now(timezone.utc))
+                    )
                     await db.execute(
                         sa_update(AuditLog)
-                        .where(AuditLog.id == row.audit_log_id)
+                        .where(AuditLog.id == audit_log_id)
                         .values(published_to_kafka=True)
                     )
+                    await sp.commit()
                     published += 1
                 except Exception as exc:
-                    row.attempts = (row.attempts or 0) + 1
-                    if row.attempts >= 3:
-                        row.status = OutboxStatus.failed
+                    await sp.rollback()
+                    new_attempts = current_attempts + 1
+                    sp2 = await db.begin_nested()
+                    try:
+                        values: dict = {"attempts": new_attempts}
+                        if new_attempts >= 3:
+                            values["status"] = OutboxStatus.failed
+                        await db.execute(
+                            sa_update(OutboxEvent)
+                            .where(OutboxEvent.id == row_id)
+                            .values(**values)
+                        )
+                        await sp2.commit()
+                    except Exception:
+                        await sp2.rollback()
                     failed += 1
-                    logger.warning("outbox_publish_failed", outbox_id=str(row.id), error=str(exc))
+                    logger.warning("outbox_publish_failed", outbox_id=str(row_id), error=str(exc))
 
             await db.commit()
         except Exception:
