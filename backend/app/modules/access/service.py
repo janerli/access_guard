@@ -395,6 +395,9 @@ async def approve_request(
         actor_username=actor_username,
     )
     logger.info("access_request_approved", request_id=str(request.id), user_role_id=str(user_role.id))
+    # Re-load role so it's not expired after session flushes inside assign_role.
+    # Async SQLAlchemy cannot lazy-load — serialization would raise MissingGreenlet.
+    await db.refresh(request, ["role"])
     return request
 
 

@@ -29,6 +29,7 @@ export default function Requests() {
   const [saving, setSaving] = useState(false);
   const [decisionModal, setDecisionModal] = useState<{ req: AccessRequest; action: "approve" | "reject" } | null>(null);
   const [comment, setComment] = useState("");
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   const pageSize = 20;
 
@@ -74,6 +75,7 @@ export default function Requests() {
   const handleDecision = async () => {
     if (!decisionModal) return;
     setSaving(true);
+    setDecisionError(null);
     try {
       if (decisionModal.action === "approve") {
         await accessApi.approveRequest(decisionModal.req.id, comment || undefined);
@@ -83,6 +85,9 @@ export default function Requests() {
       setDecisionModal(null);
       setComment("");
       load();
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? err?.message ?? "Неизвестная ошибка";
+      setDecisionError(typeof msg === "string" ? msg : JSON.stringify(msg));
     } finally {
       setSaving(false);
     }
@@ -181,8 +186,11 @@ export default function Requests() {
               <textarea className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none" rows={3}
                 value={comment} onChange={(e) => setComment(e.target.value)} />
             </div>
+            {decisionError && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{decisionError}</p>
+            )}
             <div className="flex justify-end gap-3">
-              <button onClick={() => setDecisionModal(null)} className="px-4 py-2 text-sm text-slate-600">Отмена</button>
+              <button onClick={() => { setDecisionModal(null); setDecisionError(null); setComment(""); }} className="px-4 py-2 text-sm text-slate-600">Отмена</button>
               <button onClick={handleDecision} disabled={saving}
                 className={`px-4 py-2 text-white text-sm rounded-lg disabled:opacity-50 ${
                   decisionModal.action === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"

@@ -96,23 +96,23 @@ export default function Dashboard() {
       <div className="mt-6 p-4 bg-slate-100 rounded-xl">
         <h2 className="text-sm font-semibold text-slate-600 mb-3">Внешние интерфейсы</h2>
         <div className="flex flex-wrap gap-3">
-          <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer"
+          <a href="http://45.159.209.131:8000/docs" target="_blank" rel="noreferrer"
             className="text-sm text-blue-600 hover:underline">
             API Swagger ↗
           </a>
-          <a href="http://localhost:5601" target="_blank" rel="noreferrer"
+          <a href="http://45.159.209.131:5601" target="_blank" rel="noreferrer"
             className="text-sm text-blue-600 hover:underline">
             Kibana ↗
           </a>
-          <a href="http://localhost:8025" target="_blank" rel="noreferrer"
+          <a href="http://45.159.209.131:8025" target="_blank" rel="noreferrer"
             className="text-sm text-blue-600 hover:underline">
             MailHog ↗
           </a>
-          <a href="http://localhost:8080" target="_blank" rel="noreferrer"
+          <a href="http://45.159.209.131:8080" target="_blank" rel="noreferrer"
             className="text-sm text-blue-600 hover:underline">
             Kafka UI ↗
           </a>
-          <a href="http://localhost:5555" target="_blank" rel="noreferrer"
+          <a href="http://45.159.209.131:5555" target="_blank" rel="noreferrer"
             className="text-sm text-blue-600 hover:underline">
             Flower ↗
           </a>
