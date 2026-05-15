@@ -129,8 +129,8 @@ async def create_user(
     except Exception as exc:
         logger.warning("ldap_create_failed", employee_id=employee_id, error=str(exc))
 
-    # Load relationships so Pydantic serialization doesn't trigger lazy I/O
-    await db.refresh(user, attribute_names=["position", "department"])
+    # Reload all attributes (created_at/updated_at are server-side defaults, not in memory after flush)
+    await db.refresh(user)
 
     # Publish after flush — commit happens upstream (get_db or consumer)
     corr = correlation_id or uuid.uuid4()

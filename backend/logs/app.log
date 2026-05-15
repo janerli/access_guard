@@ -1,1 +1,2 @@
 {"version": "1.0.0", "event": "accessguard_starting", "logger": "app.main", "level": "info", "timestamp": "2026-05-15T00:20:02.505354Z"}
+{"event": "accessguard_stopping", "logger": "app.main", "level": "info", "timestamp": "2026-05-15T01:01:22.647770Z"}

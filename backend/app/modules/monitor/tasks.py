@@ -21,7 +21,7 @@ async def _publish_outbox_async() -> dict:
     from app.database import TaskAsyncSessionLocal
     from app.kafka.producer import publish_event
     from app.kafka.events import KafkaEvent
-    from app.models.monitor import OutboxEvent, OutboxStatus, AuditLog
+    from app.models.monitor import OutboxEvent, OutboxStatus
 
     published = 0
     failed = 0
@@ -51,11 +51,6 @@ async def _publish_outbox_async() -> dict:
                         sa_update(OutboxEvent)
                         .where(OutboxEvent.id == row_id)
                         .values(status=OutboxStatus.published, published_at=datetime.now(timezone.utc))
-                    )
-                    await db.execute(
-                        sa_update(AuditLog)
-                        .where(AuditLog.id == audit_log_id)
-                        .values(published_to_kafka=True)
                     )
                     await sp.commit()
                     published += 1

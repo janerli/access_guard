@@ -163,43 +163,45 @@ async def run():
 
         # ── 4. Пользователи ───────────────────────────────────────────────────
         print("→ Создание 50 сотрудников...")
-        existing_count = (await db.execute(
-            select(__import__('sqlalchemy').func.count(UserExt.id))
-        )).scalar_one()
         dept_codes = list(dept_map.keys())
         pos_codes = list(pos_map.keys())
-        users_created = []
+        created_count = 0
         needed = 50
 
-        if existing_count < needed:
-            for i in range(existing_count, needed):
-                fn = random.choice(FIRST_NAMES)
-                ln = random.choice(LAST_NAMES)
-                pat = random.choice(PATRONYMICS)
-                emp_id = f"E-{1000 + i:04d}"
-                username = f"{ln.lower()[:6]}{i:03d}"
-                email = f"{username}@accessguard.local"
-                dept_code = random.choice(dept_codes)
-                pos_code = random.choice(pos_codes)
-                status = random.choices(
-                    [UserStatus.active, UserStatus.suspended, UserStatus.blocked],
-                    weights=[85, 10, 5],
-                )[0]
-                u = UserExt(
-                    id=uuid.uuid4(),
-                    employee_id=emp_id,
-                    username=username,
-                    email=email,
-                    full_name=f"{ln} {fn} {pat}",
-                    status=status,
-                    department_id=dept_map[dept_code].id,
-                    position_id=pos_map[pos_code].id,
-                )
-                db.add(u)
-                users_created.append(u)
-            await db.commit()
+        for i in range(needed):
+            emp_id = f"E-{1000 + i:04d}"
+            existing = (await db.execute(
+                select(UserExt).where(UserExt.employee_id == emp_id)
+            )).scalar_one_or_none()
+            if existing:
+                continue
+            fn = random.choice(FIRST_NAMES)
+            ln = random.choice(LAST_NAMES)
+            pat = random.choice(PATRONYMICS)
+            username = f"{ln.lower()[:6]}{i:03d}"
+            email = f"{username}@accessguard.local"
+            dept_code = random.choice(dept_codes)
+            pos_code = random.choice(pos_codes)
+            status = random.choices(
+                [UserStatus.active, UserStatus.suspended, UserStatus.blocked],
+                weights=[85, 10, 5],
+            )[0]
+            u = UserExt(
+                id=uuid.uuid4(),
+                employee_id=emp_id,
+                username=username,
+                email=email,
+                full_name=f"{ln} {fn} {pat}",
+                status=status,
+                department_id=dept_map[dept_code].id,
+                position_id=pos_map[pos_code].id,
+            )
+            db.add(u)
+            created_count += 1
+
+        await db.commit()
         users_all = (await db.execute(select(UserExt).limit(50))).scalars().all()
-        print(f"  {len(users_all)} пользователей.")
+        print(f"  {len(users_all)} пользователей (создано {created_count} новых).")
 
         # ── 5. Назначить базовые роли ─────────────────────────────────────────
         print("→ Назначение ролей пользователям...")
@@ -335,7 +337,57 @@ async def run():
         else:
             print(f"  audit_log уже содержит {existing_audit} записей, пропускаем.")
 
-        # ── 7. Создать тестовые алерты ────────────────────────────────────────
+        # ── 7. Создать правила оповещений ────────────────────────────────────
+        print("→ Создание правил оповещений...")
+        from app.models.monitor import (
+            AlertConditionType, AlertDataSource, AlertSeverity,
+        )
+        rules_data = [
+            # Simple (postgres)
+            ("multiple_failed_logins",      "Множественные неудачные входы",         AlertConditionType.threshold, AlertSeverity.high,     AlertDataSource.postgres,       {"threshold": 5, "window_minutes": 15}),
+            ("privileged_role_assigned",    "Назначена привилегированная роль",       AlertConditionType.pattern,   AlertSeverity.critical,  AlertDataSource.postgres,       {}),
+            ("audit_log_tampering_attempt", "Попытка изменить audit log",             AlertConditionType.pattern,   AlertSeverity.critical,  AlertDataSource.postgres,       {}),
+            ("admin_password_reset",        "Сброс пароля администратора",            AlertConditionType.pattern,   AlertSeverity.high,      AlertDataSource.postgres,       {}),
+            # Complex (elasticsearch)
+            ("login_outside_hours",         "Вход в нерабочее время",                AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"start_hour": 22, "end_hour": 6}),
+            ("mass_permission_failures",    "Массовые отказы в доступе",             AlertConditionType.threshold, AlertSeverity.high,      AlertDataSource.elasticsearch,  {"threshold": 10, "window_minutes": 5}),
+            ("bulk_user_changes",           "Массовые изменения учётных записей",    AlertConditionType.threshold, AlertSeverity.high,      AlertDataSource.elasticsearch,  {"threshold": 20, "window_minutes": 10}),
+            ("inactive_user_login",         "Вход неактивного пользователя",         AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"inactive_days": 90}),
+            ("unusual_geo_login",           "Вход с нового IP-адреса",               AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"history_days": 30}),
+            ("data_exfiltration_pattern",   "Подозрение на утечку данных",           AlertConditionType.threshold, AlertSeverity.critical,  AlertDataSource.elasticsearch,  {"threshold": 100, "window_minutes": 30}),
+        ]
+        for code, name, ctype, severity, datasource, config in rules_data:
+            existing_rule = (await db.execute(select(AlertRule).where(AlertRule.code == code))).scalar_one_or_none()
+            if not existing_rule:
+                db.add(AlertRule(
+                    id=uuid.uuid4(), code=code, name=name,
+                    condition_type=ctype, severity=severity,
+                    data_source=datasource, condition_config=config,
+                    is_enabled=True, cooldown_seconds=300,
+                ))
+        await db.commit()
+        print(f"  10 правил оповещений.")
+
+        # ── 7b. Создать канал уведомлений (email) ────────────────────────────
+        print("→ Создание канала уведомлений...")
+        from app.models.monitor import NotificationChannelType
+        email_channel = (await db.execute(
+            select(NotificationChannel).where(NotificationChannel.code == "email_security")
+        )).scalar_one_or_none()
+        if not email_channel:
+            db.add(NotificationChannel(
+                id=uuid.uuid4(),
+                code="email_security",
+                type=NotificationChannelType.email,
+                config={"to": "security@accessguard.local"},
+                is_enabled=True,
+            ))
+            await db.commit()
+            print("  Email-канал создан.")
+        else:
+            print("  Email-канал уже существует.")
+
+        # ── 8. Создать тестовые алерты ────────────────────────────────────────
         print("→ Создание тестовых алертов...")
         existing_alerts = (await db.execute(
             select(__import__('sqlalchemy').func.count(Alert.id))
