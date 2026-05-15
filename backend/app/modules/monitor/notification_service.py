@@ -1,6 +1,6 @@
 """notification_service — sends alerts through configured channels."""
 import json
-import logging
+import structlog
 import smtplib
 from email.mime.text import MIMEText
 
@@ -9,7 +9,7 @@ import httpx
 from app.config import settings
 from app.models.monitor import Alert, AlertRule, NotificationChannel, NotificationChannelType
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 async def send(alert: "Alert", rule: "AlertRule", channels: list["NotificationChannel"]) -> None:

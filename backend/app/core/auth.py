@@ -41,7 +41,10 @@ async def login(
         if user.failed_login_count >= _MAX_FAILED:
             user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=_LOCK_MINUTES)
             user.failed_login_count = 0
+        audit_id = await _write_login_failure_audit(db, body.username)
         await db.commit()
+        import asyncio
+        asyncio.ensure_future(_run_evaluate_after_login(audit_id))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверные учётные данные")
 
     user.failed_login_count = 0
@@ -114,3 +117,53 @@ async def logout(response: Response):
 @router.get("/me", response_model=AdminUserOut)
 async def me(current: CurrentAdmin):
     return current
+
+
+async def _write_login_failure_audit(db: AsyncSession, username: str) -> int:
+    import uuid as _uuid
+    from app.models.monitor import (
+        AuditLog, AuditModule, AuditOperation, AuditResult,
+        AuditTargetType, OutboxEvent, OutboxStatus,
+    )
+    from app.kafka.topics import TOPIC_AUDIT_EVENTS
+
+    corr = _uuid.uuid4()
+    entry = AuditLog(
+        event_id=_uuid.uuid4(),
+        actor_id=None,
+        actor_username=username,
+        target_type=AuditTargetType.system,
+        target_id=username,
+        operation=AuditOperation.login_failure,
+        module=AuditModule.identity,
+        result=AuditResult.failure,
+        details={"username": username},
+        correlation_id=corr,
+        published_to_kafka=False,
+    )
+    db.add(entry)
+    await db.flush()
+    payload = {
+        "event_id": str(entry.event_id), "audit_log_id": entry.id,
+        "timestamp": entry.timestamp.isoformat() if entry.timestamp else datetime.now(timezone.utc).isoformat(),
+        "actor_id": None, "actor_username": username,
+        "target_type": "system", "target_id": username,
+        "operation": "login_failure", "module": "identity", "result": "failure",
+        "details": entry.details, "correlation_id": str(corr),
+    }
+    db.add(OutboxEvent(audit_log_id=entry.id, topic=TOPIC_AUDIT_EVENTS, payload=payload, status=OutboxStatus.pending))
+    return entry.id
+
+
+async def _run_evaluate_after_login(audit_log_id: int) -> None:
+    import asyncio
+    await asyncio.sleep(0.5)
+    try:
+        from app.modules.monitor.tasks import _evaluate_simple_async
+        result = await _evaluate_simple_async(audit_log_id)
+        if result.get("fired", 0):
+            import structlog
+            structlog.get_logger().info("login_failure_alert_fired", audit_log_id=audit_log_id, fired=result["fired"])
+    except Exception as exc:
+        import structlog
+        structlog.get_logger().warning("login_failure_evaluate_failed", error=str(exc))

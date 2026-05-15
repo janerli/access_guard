@@ -7,6 +7,24 @@ TEMPLATE_NAME="audit-events-template"
 
 echo "→ Elasticsearch: создание index template..."
 
+curl -sf -X PUT "$ES_URL/_index_template/app-logs-template" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "index_patterns": ["app-logs-*"],
+    "template": {
+      "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+      "mappings": {
+        "properties": {
+          "level":   { "type": "keyword" },
+          "logger":  { "type": "keyword" },
+          "event":   { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "error":   { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "service": { "type": "keyword" }
+        }
+      }
+    }
+  }' && echo "  Index template 'app-logs-template' создан."
+
 curl -sf -X PUT "$ES_URL/_index_template/$TEMPLATE_NAME" \
   -H "Content-Type: application/json" \
   -d '{

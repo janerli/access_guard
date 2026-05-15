@@ -2,8 +2,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import structlog
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = structlog.get_logger()
 
 
 class PostgresCollector:
@@ -208,7 +211,8 @@ class ElasticCollector:
                 "by_module": {b["key"]: b["doc_count"] for b in aggs.get("by_module", {}).get("buckets", [])},
                 "by_result": {b["key"]: b["doc_count"] for b in aggs.get("by_result", {}).get("buckets", [])},
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("audit_summary_es_failed", error=str(exc))
             return {
                 "title": "Сводка по аудиту (ES недоступен)",
                 "headers": ["Операция", "Количество"],
@@ -243,7 +247,8 @@ class ElasticCollector:
                 "rows": rows,
                 "count": len(rows),
             }
-        except Exception:
+        except Exception as exc:
+            logger.warning("inactive_users_es_failed", error=str(exc))
             return {
                 "title": "Неактивные пользователи (ES недоступен)",
                 "headers": ["Пользователь", "Бездействие"],
@@ -265,5 +270,6 @@ class ElasticCollector:
             )
             by_result = {b["key"]: b["doc_count"] for b in resp["aggregations"]["by_result"]["buckets"]}
             return {"total_audit_events": resp["hits"]["total"]["value"], "by_result": by_result}
-        except Exception:
+        except Exception as exc:
+            logger.warning("compliance_es_part_failed", error=str(exc))
             return {"total_audit_events": 0, "by_result": {}}

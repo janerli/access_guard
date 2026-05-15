@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { identityApi, type LifecycleEvent, type User } from "@/api/identity";
+import { accessApi, type UserRole, type Role } from "@/api/access";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,21 +21,29 @@ export default function UserDetail() {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [events, setEvents] = useState<LifecycleEvent[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [resetting, setResetting] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [assigningRole, setAssigningRole] = useState(false);
 
   async function load() {
     if (!id) return;
     setLoading(true);
     try {
-      const [userResp, eventsResp] = await Promise.all([
+      const [userResp, eventsResp, rolesResp, allRolesResp] = await Promise.all([
         identityApi.getUser(id),
         identityApi.listEvents({ user_id: id }),
+        accessApi.getUserRoles(id),
+        accessApi.listRoles({ page_size: 100 }),
       ]);
       setUser(userResp.data);
       setEvents(eventsResp.data.items);
+      setUserRoles(rolesResp.data);
+      setAllRoles(allRolesResp.data.items);
     } catch {
       setError("Пользователь не найден");
     } finally {
@@ -70,8 +79,35 @@ export default function UserDetail() {
     }
   }
 
+  async function doAssignRole() {
+    if (!id || !selectedRoleId) return;
+    setAssigningRole(true);
+    try {
+      await accessApi.assignRole(id, { role_id: selectedRoleId });
+      setSelectedRoleId("");
+      void load();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAssigningRole(false);
+    }
+  }
+
+  async function doRevokeRole(userRoleId: string) {
+    if (!id) return;
+    try {
+      await accessApi.revokeRole(id, userRoleId);
+      void load();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   if (loading) return <div className="p-6 text-slate-500">Загрузка...</div>;
   if (error || !user) return <div className="p-6 text-red-500">{error || "Не найдено"}</div>;
+
+  const assignedRoleIds = new Set(userRoles.map((ur) => ur.role_id));
+  const availableRoles = allRoles.filter((r) => !assignedRoleIds.has(r.id));
 
   return (
     <div className="p-6 space-y-4">
@@ -128,6 +164,54 @@ export default function UserDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Роли пользователя */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Роли</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {userRoles.length === 0 ? (
+            <p className="text-sm text-slate-400">Роли не назначены</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {userRoles.map((ur) => (
+                <div key={ur.id} className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-3 py-1.5">
+                  <span className="text-sm font-medium text-slate-700">{ur.role.name}</span>
+                  {ur.role.is_privileged && (
+                    <Badge variant="destructive" className="text-xs px-1 py-0">привил.</Badge>
+                  )}
+                  <button
+                    onClick={() => doRevokeRole(ur.id)}
+                    className="text-slate-400 hover:text-red-500 text-xs ml-1 leading-none"
+                    title="Отозвать роль"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {availableRoles.length > 0 && (
+            <div className="flex gap-2 pt-1 border-t">
+              <select
+                value={selectedRoleId}
+                onChange={(e) => setSelectedRoleId(e.target.value)}
+                className="border rounded px-3 py-1.5 text-sm flex-1 bg-white"
+              >
+                <option value="">Выбрать роль...</option>
+                {availableRoles.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}{r.is_privileged ? " ⚠️" : ""}</option>
+                ))}
+              </select>
+              <Button size="sm" disabled={!selectedRoleId || assigningRole} onClick={doAssignRole}>
+                Назначить
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-base">История кадровых событий</CardTitle></CardHeader>

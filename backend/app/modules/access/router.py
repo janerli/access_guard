@@ -131,6 +131,7 @@ async def assign_role(
         role_id=body.role_id,
         granted_by=current_admin.id,
         expires_at=body.expires_at,
+        actor_username=current_admin.username,
     )
     await db.refresh(user_role, ["role"])
     return user_role
@@ -199,7 +200,7 @@ async def approve_request(
         raise HTTPException(status_code=404, detail="Заявка не найдена")
     if req.status != AccessRequestStatus.pending:
         raise HTTPException(status_code=400, detail="Заявка не в статусе pending")
-    return await service.approve_request(db, req, decided_by=current_admin.id, comment=body.comment)
+    return await service.approve_request(db, req, decided_by=current_admin.id, comment=body.comment, actor_username=current_admin.username)
 
 
 @router.post("/requests/{request_id}/reject", response_model=AccessRequestOut, dependencies=[require_roles(*_CAN_APPROVE)])

@@ -30,6 +30,8 @@ bash scripts/seed.sh
 | API Swagger | http://localhost:8000/docs| Документация REST API            |
 | Kibana      | http://localhost:5601     | Дашборды событий безопасности    |
 | MailHog     | http://localhost:8025     | Перехват email-оповещений        |
+| Kafka UI    | http://localhost:8080     | Топики, сообщения, consumer groups|
+| Flower      | http://localhost:5555     | Мониторинг Celery-задач          |
 | HR-mock     | http://localhost:8001/docs| Симулятор кадровой системы       |
 
 ## Учётные записи (после seed.sh)
@@ -80,6 +82,7 @@ Kibana доступна по адресу `http://localhost:5601`.
 - **Access Control** — изменения ролей и заявки
 - **Security Incidents** — неудачные входы и критические операции
 - **Compliance Overview** — привилегированные действия и ошибки
+- **System Logs** — структурированные логи приложения (`app-logs-*`)
 
 > Данные в дашбордах появятся после того как outbox-publisher отправит события в Elasticsearch (Celery-задача `monitor.publish_outbox` запускается каждые 10 сек).
 
@@ -103,6 +106,11 @@ docker compose restart backend
 # Принудительно переимпортировать Kibana-дашборды
 bash scripts/kibana-import.sh
 ```
+
+### Мониторинг через UI
+
+- **Kafka UI** (`http://localhost:8080`) — просмотр топиков, сообщений и consumer groups в реальном времени. Топик `audit.events` показывает поток аудит-событий.
+- **Flower** (`http://localhost:5555`) — состояние Celery воркеров, история задач, очереди. Задачи `monitor.publish_outbox`, `monitor.evaluate_simple_rules`, `reports.generate_report`.
 
 ### Типичные проблемы
 
@@ -190,7 +198,7 @@ aiokafka, elasticsearch[async] 8.x, Celery 5 + Redis, ldap3, openpyxl, WeasyPrin
 react-router-dom, axios
 
 **Инфраструктура:** PostgreSQL 15, Redis 7, OpenLDAP, Apache Kafka 3.6 + Zookeeper,
-Elasticsearch 8.11, Logstash 8.11, Kibana 8.11, Docker Compose
+Elasticsearch 8.11, Logstash 8.11, Kibana 8.11, Kafka UI, Flower, Docker Compose
 
 ## Kafka-топики
 
@@ -209,7 +217,7 @@ Elasticsearch 8.11, Logstash 8.11, Kibana 8.11, Docker Compose
 
 ```bash
 # Запустить только базовые сервисы (без Kafka/ES)
-docker compose up -d postgres redis ldap mailhog backend worker beat frontend
+docker compose up -d postgres redis ldap mailhog backend worker beat frontend flower
 
 # Применить миграции
 docker compose exec backend alembic upgrade head

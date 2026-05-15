@@ -1,7 +1,7 @@
 """Detection rules — 4 simple (postgres) + 6 complex (elasticsearch)."""
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.monitor import AuditLog, AuditModule, AuditOperation, AuditResult
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class RuleMatch:

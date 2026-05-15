@@ -1,5 +1,4 @@
 """Celery tasks for Reports module."""
-import logging
 import os
 from datetime import datetime, timezone
 
@@ -111,6 +110,7 @@ async def _check_schedules_async() -> dict:
             )).scalars().all()
 
             now = datetime.now(timezone.utc)
+            pending_dispatch: list[str] = []
             for schedule in schedules:
                 if _should_run(schedule.cron_expression, schedule.last_run_at, now):
                     report = Report(
@@ -122,10 +122,12 @@ async def _check_schedules_async() -> dict:
                     db.add(report)
                     await db.flush()
                     schedule.last_run_at = now
-                    generate_report.delay(str(report.id))
+                    pending_dispatch.append(str(report.id))
                     triggered += 1
 
             await db.commit()
+            for report_id in pending_dispatch:
+                generate_report.delay(report_id)
         except Exception:
             await db.rollback()
             raise

@@ -1,5 +1,4 @@
 """Celery tasks for Monitor module."""
-import logging
 from datetime import datetime, timezone
 
 import structlog

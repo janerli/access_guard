@@ -17,8 +17,8 @@ async def main() -> None:
         while True:
             try:
                 _outbox_beat.delay()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("outbox_dispatch_failed", error=str(exc))
             await asyncio.sleep(10)
 
     await asyncio.gather(

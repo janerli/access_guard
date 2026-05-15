@@ -206,6 +206,7 @@ async def run_schedule_now(schedule_id: UUID, db: Annotated[AsyncSession, Depend
     )
     db.add(report)
     await db.flush()
+    await db.commit()  # commit before dispatch so worker can find the row
     from app.modules.reports.tasks import generate_report
     generate_report.delay(str(report.id))
     await db.refresh(report, ["template"])

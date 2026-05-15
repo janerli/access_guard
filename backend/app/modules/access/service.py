@@ -191,6 +191,50 @@ async def list_user_roles(db: AsyncSession, user_id: UUID) -> list[UserRole]:
     return list(result.scalars().all())
 
 
+async def _write_role_audit(
+    db: AsyncSession,
+    actor_id: Optional[UUID],
+    actor_username: str,
+    user_id: UUID,
+    role: Role,
+    operation: str,
+) -> int:
+    from app.models.monitor import (
+        AuditLog, AuditModule, AuditOperation, AuditResult,
+        AuditTargetType, OutboxEvent, OutboxStatus,
+    )
+    import uuid as _uuid
+    from app.kafka.topics import TOPIC_AUDIT_EVENTS
+
+    corr = _uuid.uuid4()
+    entry = AuditLog(
+        event_id=_uuid.uuid4(),
+        actor_id=None,  # actor is an admin (not in users_ext), actor_username captures identity
+        actor_username=actor_username,
+        target_type=AuditTargetType.role,
+        target_id=str(user_id),
+        operation=AuditOperation(operation),
+        module=AuditModule.access,
+        result=AuditResult.success,
+        details={"role_code": role.code, "role_name": role.name, "is_privileged": role.is_privileged},
+        correlation_id=corr,
+        published_to_kafka=False,
+    )
+    db.add(entry)
+    await db.flush()
+    payload = {
+        "event_id": str(entry.event_id), "audit_log_id": entry.id,
+        "timestamp": entry.timestamp.isoformat() if entry.timestamp else datetime.now(timezone.utc).isoformat(),
+        "actor_id": None,
+        "actor_username": actor_username,
+        "target_type": "role", "target_id": str(user_id),
+        "operation": operation, "module": "access", "result": "success",
+        "details": entry.details, "correlation_id": str(corr),
+    }
+    db.add(OutboxEvent(audit_log_id=entry.id, topic=TOPIC_AUDIT_EVENTS, payload=payload, status=OutboxStatus.pending))
+    return entry.id
+
+
 async def assign_role(
     db: AsyncSession,
     user_id: UUID,
@@ -198,6 +242,7 @@ async def assign_role(
     granted_by: Optional[UUID] = None,
     expires_at: Optional[datetime] = None,
     request_id: Optional[UUID] = None,
+    actor_username: str = "system",
 ) -> UserRole:
     # Prevent duplicate active assignment
     now = datetime.now(timezone.utc)
@@ -211,6 +256,7 @@ async def assign_role(
     if existing:
         return existing
 
+    role = (await db.execute(select(Role).where(Role.id == role_id))).scalar_one()
     user_role = UserRole(
         user_id=user_id,
         role_id=role_id,
@@ -221,6 +267,23 @@ async def assign_role(
     db.add(user_role)
     await db.flush()
     await invalidate_permission_cache(user_id)
+
+    audit_id = await _write_role_audit(db, granted_by, actor_username, user_id, role, "role_assign")
+    logger.info("role_audit_written", audit_id=audit_id, user_id=str(user_id), role_code=role.code, is_privileged=role.is_privileged)
+
+    import asyncio
+
+    async def _run_evaluate(audit_log_id: int) -> None:
+        await asyncio.sleep(0.5)  # ensure transaction commits before querying
+        try:
+            from app.modules.monitor.tasks import _evaluate_simple_async
+            result = await _evaluate_simple_async(audit_log_id)
+            logger.info("evaluate_simple_rules_done", audit_log_id=audit_log_id, fired=result.get("fired", 0))
+        except Exception as exc:
+            logger.warning("evaluate_simple_rules_failed", audit_log_id=audit_log_id, error=str(exc))
+
+    asyncio.ensure_future(_run_evaluate(audit_id))
+
     return user_role
 
 
@@ -315,6 +378,7 @@ async def approve_request(
     request: AccessRequest,
     decided_by: UUID,
     comment: Optional[str] = None,
+    actor_username: str = "system",
 ) -> AccessRequest:
     request.status = AccessRequestStatus.approved
     request.decided_at = datetime.now(timezone.utc)
@@ -328,6 +392,7 @@ async def approve_request(
         role_id=request.role_id,
         granted_by=decided_by,
         request_id=request.id,
+        actor_username=actor_username,
     )
     logger.info("access_request_approved", request_id=str(request.id), user_role_id=str(user_role.id))
     return request
