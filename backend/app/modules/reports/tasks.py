@@ -19,12 +19,21 @@ def generate_report(report_id: str) -> dict:
 async def _generate_async(report_id: str) -> dict:
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
+    from elasticsearch import AsyncElasticsearch
+    from app.config import settings
     from app.database import TaskAsyncSessionLocal
-    from app.elastic.client import get_elastic_client
     from app.models.reports import Report, ReportStatus, ReportTemplate
     from app.modules.reports.generators.base import GENERATORS
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
+
+    # Fresh ES client per task — asyncio.run() creates a new event loop each time,
+    # so a cached singleton from a previous loop would hang or throw RuntimeError.
+    es = AsyncElasticsearch(
+        hosts=[settings.ELASTICSEARCH_URL],
+        retry_on_timeout=True,
+        max_retries=3,
+    )
 
     async with TaskAsyncSessionLocal() as db:
         try:
@@ -33,6 +42,7 @@ async def _generate_async(report_id: str) -> dict:
             )).scalar_one_or_none()
 
             if not report:
+                await es.close()
                 return {"error": "Report not found"}
 
             report.status = ReportStatus.generating
@@ -44,9 +54,9 @@ async def _generate_async(report_id: str) -> dict:
                 report.status = ReportStatus.failed
                 report.error_message = f"No generator for template: {template.code}"
                 await db.commit()
+                await es.close()
                 return {"error": report.error_message}
 
-            es = get_elastic_client()
             content = await generator.generate(db, es, report.parameters, report.format)
 
             ext = report.format.value
@@ -74,6 +84,7 @@ async def _generate_async(report_id: str) -> dict:
             except Exception as exc:
                 logger.warning("report_notification_failed", error=str(exc))
 
+            await es.close()
             return {"report_id": report_id, "status": "ready", "file_size": len(content)}
 
         except Exception as exc:
@@ -85,6 +96,7 @@ async def _generate_async(report_id: str) -> dict:
                 await db.commit()
             except Exception:
                 await db.rollback()
+            await es.close()
             return {"error": str(exc)}
 
 
