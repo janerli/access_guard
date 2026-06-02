@@ -52,6 +52,7 @@ const NAV_ITEMS = [
       { to: "/monitor/audit", label: "Журнал аудита" },
       { to: "/monitor/alerts", label: "Оповещения" },
       { to: "/monitor/rules", label: "Правила" },
+      { to: "/monitor/simulator", label: "Симулятор угроз" },
       { to: "/monitor/kibana", label: "Kibana" },
     ],
   },

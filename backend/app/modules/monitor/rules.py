@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import structlog
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -19,6 +20,21 @@ class RuleMatch:
         self.matched = matched
         self.subject_user_id = subject_user_id
         self.details = details or {}
+
+
+class BaseRule(ABC):
+    """Abstract base for all detection rules."""
+
+    code: str
+    name: str
+
+    @abstractmethod
+    async def check(self, source: Any, config: dict, *args: Any) -> list[RuleMatch]:
+        """Execute the rule and return a list of matches (empty list = no match)."""
+
+    @classmethod
+    def single(cls, match: RuleMatch) -> list[RuleMatch]:
+        return [match] if match.matched else []
 
 
 # ── Simple rules (postgres) ───────────────────────────────────────────────────

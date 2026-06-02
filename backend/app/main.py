@@ -58,12 +58,14 @@ from app.modules.identity.router import router as identity_router  # noqa: E402
 from app.modules.access.router import router as access_router  # noqa: E402
 from app.modules.monitor.router import router as monitor_router  # noqa: E402
 from app.modules.reports.router import router as reports_router  # noqa: E402
+from app.modules.simulation.router import router as simulation_router  # noqa: E402
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(identity_router, prefix="/api/identity", tags=["identity"])
 app.include_router(access_router, prefix="/api/access", tags=["access"])
 app.include_router(monitor_router, prefix="/api/monitor", tags=["monitor"])
 app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
+app.include_router(simulation_router, prefix="/api/simulation", tags=["simulation"])
 
 
 @app.get("/health", tags=["system"])

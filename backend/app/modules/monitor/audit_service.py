@@ -69,4 +69,14 @@ async def log(
     )
     db.add(outbox)
     await db.flush()
+
+    # Trigger simple-rule evaluation after the current transaction commits.
+    # countdown=1 gives the DB transaction time to become visible to the worker.
+    try:
+        from app.modules.monitor.tasks import evaluate_simple_rules
+        evaluate_simple_rules.apply_async(args=[entry.id], countdown=1)
+    except Exception:
+        # Never let task dispatch failure break the audit write.
+        pass
+
     return entry

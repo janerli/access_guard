@@ -17,6 +17,7 @@ import AuditLog from "@/pages/monitor/AuditLog";
 import Alerts from "@/pages/monitor/Alerts";
 import Rules from "@/pages/monitor/Rules";
 import KibanaPage from "@/pages/monitor/Kibana";
+import ThreatSimulator from "@/pages/monitor/ThreatSimulator";
 import ReportTemplates from "@/pages/reports/Templates";
 import NewReport from "@/pages/reports/NewReport";
 import ReportHistory from "@/pages/reports/History";
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/monitor/alerts" element={<Alerts />} />
           <Route path="/monitor/rules" element={<Rules />} />
           <Route path="/monitor/kibana" element={<KibanaPage />} />
+          <Route path="/monitor/simulator" element={<ThreatSimulator />} />
 
           {/* Reports module */}
           <Route path="/reports" element={<Navigate to="/reports/templates" replace />} />

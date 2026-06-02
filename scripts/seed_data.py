@@ -17,35 +17,37 @@ from datetime import datetime, timedelta, timezone
 
 DEPARTMENTS = [
     # (code, name, parent_code)
-    ("IT",     "Департамент информационных технологий", None),
-    ("IT-DEV", "Отдел разработки",                     "IT"),
-    ("IT-OPS", "Отдел эксплуатации",                   "IT"),
-    ("HR",     "Отдел кадров",                          None),
-    ("FIN",    "Финансовый отдел",                      None),
+    # Коды совпадают с тем, что сеет миграция 002, плюс добавляем IT-родитель.
+    # IT добавляется первым чтобы IT-DEV и IT-OPS получили parent_id.
+    ("IT",       "Департамент информационных технологий",  None),
+    ("IT-DEV",   "Отдел разработки",                       "IT"),
+    ("IT-OPS",   "Отдел эксплуатации",                     "IT"),
+    ("HR",       "Отдел кадров",                            None),
+    ("FINANCE",  "Финансовый отдел",                        None),
+    ("SECURITY", "Отдел информационной безопасности",       None),
 ]
 
 POSITIONS = [
     # (code, name, level)
-    ("CTO",       "Технический директор",      5),
-    ("DEV-LEAD",  "Ведущий разработчик",       4),
-    ("DEV-SEN",   "Старший разработчик",       3),
-    ("DEV-MID",   "Разработчик",               2),
-    ("DEV-JUN",   "Младший разработчик",       1),
-    ("OPS-LEAD",  "Ведущий администратор",     4),
+    # Включает все коды из миграции 002 (нужны для position_role_defaults) плюс доп. должности.
+    ("DEV-JUN",   "Разработчик (Junior)",           1),
+    ("DEV-MID",   "Разработчик (Middle)",            2),
+    ("DEV-SEN",   "Разработчик (Senior)",            3),
+    ("OPS-ENG",   "Инженер эксплуатации",            2),
+    ("HR-SPEC",   "HR-специалист",                   2),
+    ("FIN-ANAL",  "Финансовый аналитик",             2),
+    ("SEC-ANALYST","Аналитик ИБ",                    2),
+    ("MANAGER",   "Руководитель отдела",             4),
+    # Дополнительные должности для разнообразия seed-данных
+    ("DEV-LEAD",  "Ведущий разработчик",             4),
     ("OPS-SEN",   "Старший системный администратор", 3),
-    ("OPS-MID",   "Системный администратор",   2),
-    ("HR-HEAD",   "Начальник отдела кадров",   4),
-    ("HR-SEN",    "Старший HR-специалист",     3),
-    ("HR-MID",    "HR-специалист",             2),
-    ("FIN-HEAD",  "Главный бухгалтер",         4),
-    ("FIN-SEN",   "Старший бухгалтер",         3),
-    ("FIN-MID",   "Бухгалтер",                 2),
-    ("SEC-HEAD",  "Начальник службы безопасности", 4),
-    ("ANALYST",   "Аналитик",                  2),
-    ("QA-SEN",    "Ведущий тестировщик",       3),
-    ("QA-MID",    "Тестировщик",               2),
-    ("PM",        "Менеджер проектов",         3),
-    ("INTERN",    "Стажёр",                    1),
+    ("HR-HEAD",   "Начальник отдела кадров",         4),
+    ("FIN-HEAD",  "Главный бухгалтер",               4),
+    ("FIN-MID",   "Бухгалтер",                       2),
+    ("QA-SEN",    "Ведущий тестировщик",             3),
+    ("QA-MID",    "Тестировщик",                     2),
+    ("PM",        "Менеджер проектов",               3),
+    ("INTERN",    "Стажёр",                          1),
 ]
 
 FIRST_NAMES = [
@@ -139,6 +141,9 @@ async def run():
             existing = (await db.execute(select(Department).where(Department.code == code))).scalar_one_or_none()
             if existing:
                 dept_map[code] = existing
+                # Миграция могла создать IT-DEV/IT-OPS без parent_id — исправляем
+                if parent_code and existing.parent_id is None and parent_code in dept_map:
+                    existing.parent_id = dept_map[parent_code].id
                 continue
             parent_id = dept_map[parent_code].id if parent_code else None
             d = Department(id=uuid.uuid4(), code=code, name=name, parent_id=parent_id)
@@ -342,19 +347,21 @@ async def run():
         from app.models.monitor import (
             AlertConditionType, AlertDataSource, AlertSeverity,
         )
+        # Severity соответствует migration 004 (migration всегда выполняется первой;
+        # здесь значения нужны только если миграция не сработала или при ручном тесте).
         rules_data = [
             # Simple (postgres)
             ("multiple_failed_logins",      "Множественные неудачные входы",         AlertConditionType.threshold, AlertSeverity.high,     AlertDataSource.postgres,       {"threshold": 5, "window_minutes": 15}),
-            ("privileged_role_assigned",    "Назначена привилегированная роль",       AlertConditionType.pattern,   AlertSeverity.critical,  AlertDataSource.postgres,       {}),
-            ("audit_log_tampering_attempt", "Попытка изменить audit log",             AlertConditionType.pattern,   AlertSeverity.critical,  AlertDataSource.postgres,       {}),
-            ("admin_password_reset",        "Сброс пароля администратора",            AlertConditionType.pattern,   AlertSeverity.high,      AlertDataSource.postgres,       {}),
+            ("privileged_role_assigned",    "Назначена привилегированная роль",       AlertConditionType.pattern,   AlertSeverity.high,     AlertDataSource.postgres,       {}),
+            ("audit_log_tampering_attempt", "Попытка изменить audit log",             AlertConditionType.pattern,   AlertSeverity.critical, AlertDataSource.postgres,       {}),
+            ("admin_password_reset",        "Сброс пароля администратора",            AlertConditionType.pattern,   AlertSeverity.high,     AlertDataSource.postgres,       {}),
             # Complex (elasticsearch)
-            ("login_outside_hours",         "Вход в нерабочее время",                AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"start_hour": 22, "end_hour": 6}),
-            ("mass_permission_failures",    "Массовые отказы в доступе",             AlertConditionType.threshold, AlertSeverity.high,      AlertDataSource.elasticsearch,  {"threshold": 10, "window_minutes": 5}),
-            ("bulk_user_changes",           "Массовые изменения учётных записей",    AlertConditionType.threshold, AlertSeverity.high,      AlertDataSource.elasticsearch,  {"threshold": 20, "window_minutes": 10}),
-            ("inactive_user_login",         "Вход неактивного пользователя",         AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"inactive_days": 90}),
-            ("unusual_geo_login",           "Вход с нового IP-адреса",               AlertConditionType.anomaly,   AlertSeverity.medium,    AlertDataSource.elasticsearch,  {"history_days": 30}),
-            ("data_exfiltration_pattern",   "Подозрение на утечку данных",           AlertConditionType.threshold, AlertSeverity.critical,  AlertDataSource.elasticsearch,  {"threshold": 100, "window_minutes": 30}),
+            ("login_outside_hours",         "Вход в нерабочее время",                AlertConditionType.anomaly,   AlertSeverity.medium,   AlertDataSource.elasticsearch,  {"start_hour": 22, "end_hour": 6}),
+            ("mass_permission_failures",    "Массовые отказы в доступе",             AlertConditionType.threshold, AlertSeverity.medium,   AlertDataSource.elasticsearch,  {"threshold": 10, "window_minutes": 5}),
+            ("bulk_user_changes",           "Массовые изменения учётных записей",    AlertConditionType.threshold, AlertSeverity.medium,   AlertDataSource.elasticsearch,  {"threshold": 20, "window_minutes": 10}),
+            ("inactive_user_login",         "Вход неактивного пользователя",         AlertConditionType.anomaly,   AlertSeverity.high,     AlertDataSource.elasticsearch,  {"inactive_days": 90}),
+            ("unusual_geo_login",           "Вход с нового IP-адреса",               AlertConditionType.anomaly,   AlertSeverity.high,     AlertDataSource.elasticsearch,  {"history_days": 30}),
+            ("data_exfiltration_pattern",   "Подозрение на утечку данных",           AlertConditionType.threshold, AlertSeverity.high,     AlertDataSource.elasticsearch,  {"threshold": 100, "window_minutes": 30}),
         ]
         for code, name, ctype, severity, datasource, config in rules_data:
             existing_rule = (await db.execute(select(AlertRule).where(AlertRule.code == code))).scalar_one_or_none()
@@ -453,7 +460,7 @@ async def run():
             print("  3 тестовых отчёта создано.")
 
     print("\n✓ Наполнение данными завершено.")
-    print("  Пользователей: 50 | Отделов: 5 | Должностей: 20")
+    print("  Пользователей: 50 | Отделов: 6 | Должностей: 17")
     print("  Записей аудита: ~5000 | Алертов: 4 | Отчётов: 3")
 
 

@@ -62,6 +62,7 @@ async def create_report(
 
     report = Report(
         template_id=template.id,
+        requested_by=current_admin.id,
         parameters=body.parameters,
         format=body.format,
         status=ReportStatus.pending,
@@ -192,7 +193,11 @@ async def delete_schedule(schedule_id: UUID, db: Annotated[AsyncSession, Depends
 
 
 @router.post("/schedules/{schedule_id}/run", response_model=ReportOut, status_code=202, dependencies=[require_roles(*_CAN_MANAGE)])
-async def run_schedule_now(schedule_id: UUID, db: Annotated[AsyncSession, Depends(get_db)]):
+async def run_schedule_now(
+    schedule_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_admin=Depends(get_current_admin),
+):
     schedule = (await db.execute(
         select(ReportSchedule).where(ReportSchedule.id == schedule_id)
     )).scalar_one_or_none()
@@ -200,6 +205,7 @@ async def run_schedule_now(schedule_id: UUID, db: Annotated[AsyncSession, Depend
         raise HTTPException(status_code=404, detail="Расписание не найдено")
     report = Report(
         template_id=schedule.template_id,
+        requested_by=current_admin.id,
         parameters=schedule.parameters,
         format=schedule.format,
         status=ReportStatus.pending,

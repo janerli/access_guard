@@ -101,7 +101,7 @@ async def _generate_async(report_id: str) -> dict:
             return {"error": str(exc)}
 
 
-@celery_app.task(name="reports.check_schedules")
+@celery_app.task(name="reports.check_report_schedules")
 def check_report_schedules() -> dict:
     import asyncio
     return asyncio.run(_check_schedules_async())
@@ -162,13 +162,14 @@ def _should_run(cron_expr: str, last_run: datetime | None, now: datetime) -> boo
     if cron_expr == "@weekly":
         return (now - last_run) >= timedelta(weeks=1)
 
-    # Format "HH:MM" — run once per day at specified time
+    # Format "HH:MM" — run once per day at or after the specified time.
+    # Using >= rather than == so a delayed beat tick doesn't miss the window.
     try:
         hh, mm = cron_expr.split(":")
         target_hour, target_minute = int(hh), int(mm)
-        # Check if it's the right time and hasn't run today
-        if now.hour == target_hour and now.minute == target_minute:
-            return last_run.date() < now.date()
+        target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        if now >= target_time and last_run.date() < now.date():
+            return True
     except ValueError:
         pass
 

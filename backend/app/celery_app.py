@@ -39,7 +39,7 @@ celery_app.conf.update(
             "schedule": 60,
         },
         "reports-check-schedules": {
-            "task": "reports.check_schedules",
+            "task": "reports.check_report_schedules",
             "schedule": 60,  # каждую минуту
         },
     },

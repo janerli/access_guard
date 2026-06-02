@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 import sqlalchemy as sa
@@ -39,6 +39,6 @@ class AdminUser(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.text("now()"),
-        onupdate=datetime.utcnow,
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
