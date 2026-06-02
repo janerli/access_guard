@@ -165,7 +165,7 @@ async def test_sim_mass_permission_failures(client: AsyncClient, admin_token: st
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
-    assert data["audit_entries_created"] >= 12
+    assert data["audit_entries_created"] >= 7  # threshold from seeded rule + 2
 
 
 @pytest.mark.asyncio

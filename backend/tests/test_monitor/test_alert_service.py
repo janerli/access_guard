@@ -1,4 +1,5 @@
 """Tests for alert_service and audit_service (covers previously untested paths)."""
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -214,6 +215,7 @@ def test_send_log_writes_to_file(tmp_path):
         severity=AlertSeverity.medium,
         status=AlertStatus.new,
         details={"key": "value"},
+        triggered_at=datetime.now(timezone.utc),
     )
     channel = NotificationChannel(
         id=uuid4(), code="log_test",
@@ -243,6 +245,7 @@ def test_send_log_bad_path_does_not_raise():
     alert = Alert(
         id=uuid4(), rule_id=rule.id,
         severity=AlertSeverity.low, status=AlertStatus.new, details={},
+        triggered_at=datetime.now(timezone.utc),
     )
     channel = NotificationChannel(
         id=uuid4(), code="bad", type=NotificationChannelType.log,
