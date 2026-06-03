@@ -69,7 +69,7 @@ export default function RoleGraph() {
                 >
                   {role.name}
                   {role.is_privileged && (
-                    <span className="ml-2 text-xs opacity-75">⚠ привил.</span>
+                    <span className="ml-2 text-xs opacity-75">[привил.]</span>
                   )}
                   {(role.permissions ?? []).length > 0 && (
                     <span className="ml-1 text-xs opacity-60">({(role.permissions ?? []).length})</span>

@@ -3,9 +3,9 @@ import { monitorApi, type HealthResponse, type ServiceStatus } from "@/api/monit
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "ok") return <span className="text-green-500 text-lg font-bold">✓</span>;
-  if (status === "degraded") return <span className="text-yellow-500 text-lg font-bold">⚠</span>;
-  return <span className="text-red-500 text-lg font-bold">✗</span>;
+  if (status === "ok") return <span className="text-green-500 text-lg font-bold">OK</span>;
+  if (status === "degraded") return <span className="text-yellow-500 text-lg font-bold">!</span>;
+  return <span className="text-red-500 text-lg font-bold">ERR</span>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -115,14 +115,14 @@ export default function SystemHealth() {
                   <span className="text-slate-600">В ожидании</span>
                   <span className={`font-semibold ${health.outbox_pending > 10 ? "text-yellow-600" : "text-green-600"}`}>
                     {health.outbox_pending}
-                    {health.outbox_pending > 10 && " ⚠"}
+                    {health.outbox_pending > 10 && " !"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-600">С ошибкой</span>
                   <span className={`font-semibold ${health.outbox_failed > 0 ? "text-red-600" : "text-green-600"}`}>
                     {health.outbox_failed}
-                    {health.outbox_failed > 0 && " ✗"}
+                    {health.outbox_failed > 0 && " err"}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 pt-1">

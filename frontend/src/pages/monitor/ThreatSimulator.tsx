@@ -353,7 +353,7 @@ function ScenarioCard({
           }`}
         >
           <span className="mt-0.5 shrink-0">
-            {result.success ? "✓" : "✗"}
+            {result.success ? "OK" : "ERR"}
           </span>
           <span className="leading-relaxed">
             {result.message}

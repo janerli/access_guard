@@ -77,7 +77,7 @@ export default function Matrix() {
                         }`}
                         title={active ? "Удалить связь" : "Добавить связь"}
                       >
-                        ✓
+                        +
                       </button>
                     </td>
                   );

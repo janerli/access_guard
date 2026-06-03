@@ -29,6 +29,7 @@ export default function PreviewReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -38,6 +39,17 @@ export default function PreviewReport() {
       .catch(() => setError("Отчёт не найден"))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Загружаем PDF через API (с JWT) и создаём blob URL для iframe
+  useEffect(() => {
+    if (!report || report.format !== "pdf" || report.status !== "ready") return;
+    let url: string;
+    reportsApi.downloadReport(report.id).then(res => {
+      url = URL.createObjectURL(new Blob([res.data as BlobPart], { type: "application/pdf" }));
+      setPdfBlobUrl(url);
+    }).catch(() => setPdfBlobUrl(null));
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [report?.id, report?.status]);
 
   const handleDownload = async () => {
     if (!report) return;
@@ -88,7 +100,6 @@ export default function PreviewReport() {
 
   const isPdf = report.format === "pdf";
   const isReady = report.status === "ready";
-  const downloadUrl = `/api/reports/${report.id}/download`;
 
   const paramEntries = Object.entries(report.parameters || {});
 
@@ -116,11 +127,17 @@ export default function PreviewReport() {
         {/* Viewer */}
         <div className="flex-1 bg-slate-100 overflow-hidden">
           {isReady && isPdf ? (
-            <iframe
-              src={downloadUrl}
-              className="w-full h-full border-none"
-              title="PDF предпросмотр"
-            />
+            pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-full border-none"
+                title="PDF предпросмотр"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+              </div>
+            )
           ) : isReady && !isPdf ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-500">
               <svg className="w-16 h-16 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">

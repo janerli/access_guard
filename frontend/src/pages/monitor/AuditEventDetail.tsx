@@ -55,8 +55,8 @@ const RESULT_COLORS: Record<string, string> = {
 };
 
 const RESULT_ICONS: Record<string, string> = {
-  success: "✓",
-  failure: "✗",
+  success: "OK",
+  failure: "ERR",
   partial: "~",
   denied: "⊘",
 };
@@ -247,9 +247,9 @@ export default function AuditEventDetail() {
                           </span>
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                          {ev.actor_username && <span>👤 {ev.actor_username}</span>}
-                          {ev.target_type && <span>🎯 {ev.target_type}{ev.target_id ? `: ${ev.target_id.slice(0, 12)}` : ""}</span>}
-                          {ev.timestamp && <span>🕐 {formatTs(ev.timestamp)}</span>}
+                          {ev.actor_username && <span>Актор: {ev.actor_username}</span>}
+                          {ev.target_type && <span>Цель: {ev.target_type}{ev.target_id ? `: ${ev.target_id.slice(0, 12)}` : ""}</span>}
+                          {ev.timestamp && <span>{formatTs(ev.timestamp)}</span>}
                           <span className="text-slate-300">
                             {ev.source === "elasticsearch" ? "ES" : "PG"}
                           </span>

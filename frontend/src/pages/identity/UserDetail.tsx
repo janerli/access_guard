@@ -20,12 +20,12 @@ const EVENT_LABELS: Record<string, string> = {
 type Tab = "info" | "timeline";
 
 const TIMELINE_ICONS: Record<string, string> = {
-  hire: "🟢", create: "🟢",
-  transfer: "🔄", update: "🔄",
-  role_assign: "🔑", role_revoke: "🔑",
-  block: "🔒", suspend: "🔒",
-  restore: "🔓",
-  login_success: "🔐", login_failure: "🔐",
+  hire: "+", create: "+",
+  transfer: "~", update: "~",
+  role_assign: "R", role_revoke: "R",
+  block: "X", suspend: "X",
+  restore: "O",
+  login_success: "L", login_failure: "L",
 };
 
 export default function UserDetail() {
@@ -172,7 +172,7 @@ export default function UserDetail() {
             <div className="relative ml-4">
               <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-200" />
               {auditEntries.map((entry) => {
-                const icon = TIMELINE_ICONS[entry.operation] ?? "📋";
+                const icon = TIMELINE_ICONS[entry.operation] ?? "·";
                 const isFailure = entry.result === "failure";
                 return (
                   <div key={entry.id} className="relative flex gap-4 pb-4">
@@ -271,7 +271,7 @@ export default function UserDetail() {
                         className="text-slate-400 hover:text-red-500 text-xs ml-1 leading-none"
                         title="Отозвать роль"
                       >
-                        ✕
+                        x
                       </button>
                     </div>
                   ))}
@@ -287,7 +287,7 @@ export default function UserDetail() {
                   >
                     <option value="">Выбрать роль...</option>
                     {availableRoles.map((r) => (
-                      <option key={r.id} value={r.id}>{r.name}{r.is_privileged ? " ⚠️" : ""}</option>
+                      <option key={r.id} value={r.id}>{r.name}{r.is_privileged ? " [привил.]" : ""}</option>
                     ))}
                   </select>
                   <Button size="sm" disabled={!selectedRoleId || assigningRole} onClick={doAssignRole}>

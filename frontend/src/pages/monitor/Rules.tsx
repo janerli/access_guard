@@ -92,7 +92,7 @@ function Section({
                   </div>
                   {testResult && (
                     <div className={`mt-2 p-2 rounded text-xs font-mono ${testResult.matched ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
-                      {testResult.matched ? "⚠ Сработало" : "✓ Нет срабатываний"}
+                      {testResult.matched ? "! Сработало" : "OK Нет срабатываний"}
                       {Object.keys(testResult.details).length > 0 && (
                         <span className="ml-2">{JSON.stringify(testResult.details)}</span>
                       )}
