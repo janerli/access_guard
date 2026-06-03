@@ -62,8 +62,7 @@ async def create_report(
 
     report = Report(
         template_id=template.id,
-        # requested_by ссылается на users_ext.id, а не admin_users.id —
-        # оставляем NULL (AdminUser — отдельная таблица, не UserExt)
+        requested_by=current_admin.id,
         parameters=body.parameters,
         format=body.format,
         status=ReportStatus.pending,
@@ -206,6 +205,7 @@ async def run_schedule_now(
         raise HTTPException(status_code=404, detail="Расписание не найдено")
     report = Report(
         template_id=schedule.template_id,
+        requested_by=current_admin.id,
         parameters=schedule.parameters,
         format=schedule.format,
         status=ReportStatus.pending,

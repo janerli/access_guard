@@ -54,7 +54,9 @@ class Report(Base):
         PGUUID(as_uuid=True), ForeignKey("report_templates.id"), nullable=False
     )
     requested_by: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users_ext.id", ondelete="SET NULL"), nullable=True
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_users.id", ondelete="SET NULL", name="fk_reports_requested_by_admin"),
+        nullable=True,
     )
     parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     format: Mapped[ReportFormat] = mapped_column(
