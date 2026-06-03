@@ -1,296 +1,329 @@
-# AccessGuard — Система мониторинга и управления доступом
+<div align="center">
 
-Прототип корпоративной системы управления доступом к информационным ресурсам
-для организаций численностью 50–500 сотрудников.
+# 🛡️ AccessGuard
+
+**Корпоративная система мониторинга и управления доступом**
+
+*Дипломный проект · Python + FastAPI + React + Kafka + Elasticsearch*
+
+[![CI](https://github.com/janerli/access_guard/actions/workflows/ci.yml/badge.svg)](https://github.com/janerli/access_guard/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/janerli/access_guard/branch/main/graph/badge.svg)](https://codecov.io/gh/janerli/access_guard)
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?logo=postgresql&logoColor=white)
+
+</div>
+
+---
+
+## О проекте
+
+AccessGuard — прототип корпоративной системы управления доступом к информационным ресурсам для организаций численностью **50–500 сотрудников**. Реализует полный цикл: от найма сотрудника до аудита его действий и автоматического выявления угроз безопасности.
+
+### Ключевые возможности
+
+- 🔐 **Управление жизненным циклом** учётных записей с интеграцией HR-системы и OpenLDAP  
+- 🎭 **RBAC с матрицей доступа** — 7 ролей, 14 разрешений, заявки с многоступенчатым согласованием  
+- 📊 **Двухконтурный аудит** — PostgreSQL (источник истины) + Elasticsearch (поиск и агрегации)  
+- 🚨 **10 правил выявления угроз** — 4 real-time (PostgreSQL) + 6 через ES aggregations  
+- 📈 **Kibana дашборды** — 6 преднастроенных дашбордов для анализа безопасности  
+- 📄 **8 шаблонов отчётов** в форматах PDF / XLSX / CSV с асинхронной генерацией  
+- ⚡ **Симулятор угроз** — воспроизведение каждого из 10 правил одной кнопкой
+
+---
 
 ## Быстрый старт
 
 ```bash
-# 1. Скопировать конфиг
+# 1. Клонировать и настроить окружение
+git clone https://github.com/janerli/access_guard.git && cd access_guard
 cp .env.example .env
 
-# 2. Запустить все сервисы
+# 2. Запустить все сервисы (14 контейнеров)
 docker compose up -d
 
 # 3. Подождать 2–3 минуты пока поднимутся Kafka, Elasticsearch и Kibana
-#    Проверить готовность:
-docker compose ps
+docker compose ps   # все сервисы должны быть healthy
 
 # 4. Заполнить демо-данными и импортировать Kibana-дашборды
 bash scripts/seed.sh
 ```
 
-> **На сервере** замени `localhost` на IP-адрес сервера во всех адресах ниже.
+> 💡 На удалённом сервере замени `localhost` на IP-адрес машины во всех ссылках ниже.
 
-После этого открыть:
+---
 
-| Сервис      | Адрес                     | Назначение                       |
-|-------------|---------------------------|----------------------------------|
-| Frontend             | http://localhost:5173                    | Основной интерфейс                                          |
-| Симулятор угроз      | http://localhost:5173/monitor/simulator  | Запуск синтетических атак для демонстрации правил выявления |
-| API Swagger          | http://localhost:8000/docs               | Документация REST API                                       |
-| Kibana               | http://localhost:5601                    | Дашборды событий безопасности                               |
-| MailHog              | http://localhost:8025                    | Перехват email-оповещений                                   |
-| Kafka UI             | http://localhost:8080                    | Топики, сообщения, consumer groups                          |
-| Flower               | http://localhost:5555                    | Мониторинг Celery-задач                                     |
-| HR-mock              | http://localhost:8001/docs               | Симулятор кадровой системы                                  |
+## Адреса сервисов
 
-## Учётные записи (после seed.sh)
+| Сервис | Адрес | Назначение |
+|--------|-------|------------|
+| 🖥️ **Frontend** | [localhost:5173](http://localhost:5173) | Основной веб-интерфейс |
+| 🎯 **Симулятор угроз** | [localhost:5173/monitor/simulator](http://localhost:5173/monitor/simulator) | Демонстрация правил выявления |
+| 📋 **API Swagger** | [localhost:8000/docs](http://localhost:8000/docs) | Документация REST API |
+| 📊 **Kibana** | [localhost:5601](http://localhost:5601) | Дашборды событий безопасности |
+| 📧 **MailHog** | [localhost:8025](http://localhost:8025) | Перехват email-оповещений |
+| 🔀 **Kafka UI** | [localhost:8080](http://localhost:8080) | Топики, сообщения, consumer groups |
+| 🌸 **Flower** | [localhost:5555](http://localhost:5555) | Мониторинг Celery-задач |
+| 👥 **HR-mock** | [localhost:8001/docs](http://localhost:8001/docs) | Симулятор кадровой системы |
 
-| Логин          | Пароль         | Роль                    |
-|----------------|----------------|-------------------------|
-| admin          | Admin123456789 | Системный администратор |
-| security_admin | Security123456 | Офицер безопасности     |
-| hr_admin       | HrAdmin123456  | HR-оператор             |
-| auditor        | Auditor123456  | Аудитор                 |
+---
 
-## Развёртывание на сервере
+## Учётные записи
 
-```bash
-# Установить Docker
-curl -fsSL https://get.docker.com | sh
+| Логин | Пароль | Роль | Права |
+|-------|--------|------|-------|
+| `admin` | `Admin123456789` | Системный администратор | Полный доступ |
+| `security_admin` | `Security123456` | Офицер безопасности | Аудит, алерты, отчёты |
+| `hr_admin` | `HrAdmin123456` | HR-оператор | Управление пользователями |
+| `auditor_user` | `Auditor123456` | Аудитор | Просмотр и отчёты |
 
-# Клонировать репозиторий
-git clone <repo-url> access_guard
-cd access_guard
+---
 
-# Настроить окружение
-cp .env.example .env
+## Архитектура
 
-# Запустить
-docker compose up -d
-
-# Подождать 2–3 минуты, затем seed
-bash scripts/seed.sh
+```
+┌─────────────┐    hr.events     ┌──────────────┐  identity.users  ┌──────────────┐
+│   HR-mock   │ ──────────────► │   Identity   │ ───────────────► │    Access    │
+│  (FastAPI)  │                  │   Module     │                   │    Module    │
+└─────────────┘                  └──────┬───────┘                   └──────┬───────┘
+                                        │ audit                            │ audit
+                                        ▼                                  ▼
+                                 ┌──────────────────────────────────────────────────┐
+                                 │                Monitor Module                    │
+                                 │  audit_log (PostgreSQL) + outbox_events          │
+                                 └──────────────────┬───────────────────────────────┘
+                                                    │ Kafka: audit.events
+                                                    ▼
+                                             ┌────────────┐
+                                             │  Logstash  │
+                                             └─────┬──────┘
+                                                   │
+                                             ┌─────▼──────┐
+                                             │Elasticsearch│◄── 10 правил выявления
+                                             └─────┬──────┘
+                                                   │
+                                    ┌──────────────┼──────────────┐
+                                    ▼              ▼              ▼
+                                  Kibana        Reports        Alerts → MailHog
+                                (6 dashboards) (8 templates)  (email/webhook/kafka)
 ```
 
-Сервисы будут доступны на `http://<IP-сервера>:<порт>`.
+### Ключевые архитектурные решения
 
-## Kibana — дашборды
+| Паттерн | Реализация |
+|---------|-----------|
+| **Transactional outbox** | `audit_log` + `outbox_events` в одной транзакции → Celery publisher → Kafka |
+| **Идемпотентные консьюмеры** | Таблица `processed_events` с `event_id + consumer_group` |
+| **Redis-кэш прав** | `check_permission` кэшируется на 60 сек, инвалидируется при смене ролей |
+| **Append-only аудит** | PostgreSQL-триггер запрещает UPDATE/DELETE записей старше 1 минуты |
+| **Сквозной correlation_id** | Все события, записи аудита и алерты связаны единым UUID |
 
-Дашборды импортируются автоматически через `seed.sh`. Если нужно импортировать вручную:
+---
+
+## Модули
+
+<details>
+<summary><b>🧑‍💼 Identity — управление учётными записями</b></summary>
+
+- Жизненный цикл: `new → active → suspended → blocked → deleted`
+- Автоматическая синхронизация с HR-системой через Kafka (`hr.events`)
+- Provisioning / deprovisioning в OpenLDAP
+- Celery-задачи: `cleanup_blocked_users` (90 дней), `reconcile_with_hr` (ежесуточно)
+- **API:** `GET|POST /api/identity/users`, `PATCH /:id`, `/suspend`, `/restore`, `/block`, `/sync`
+
+</details>
+
+<details>
+<summary><b>🎭 Access — контроль доступа (RBAC)</b></summary>
+
+- 7 ролей: `system_admin`, `security_officer`, `hr_operator`, `auditor`, `manager`, `employee`, `guest`
+- 14 разрешений, матрица `должность → роли` (`position_role_defaults`)
+- Заявки на доступ: `pending → approved/rejected` с согласованием менеджера и офицера ИБ
+- Проверка прав с кэшом Redis (TTL 60 сек)
+- **API:** `/api/access/roles`, `/permissions`, `/resources`, `/requests`, `/matrix`, `/check`
+
+</details>
+
+<details>
+<summary><b>🔍 Monitor — мониторинг и аудит</b></summary>
+
+- **Двухконтурный аудит:** PostgreSQL (гарантии) + Elasticsearch (поиск, агрегации)
+- **10 правил выявления:**
+
+  | Тип | Правила |
+  |-----|---------|
+  | Real-time (PostgreSQL) | Множественные неудачные входы, назначение привилегированной роли, попытка изменить audit_log, сброс пароля администратора |
+  | Периодические (Elasticsearch, каждые 60 сек) | Вход в нерабочее время, массовые отказы в доступе, массовые изменения учётных записей, вход под неактивной записью, нетипичная геолокация, признаки утечки данных |
+
+- **Каналы оповещений:** email (MailHog), webhook, log, Kafka
+- **API:** `/api/monitor/dashboard`, `/audit`, `/rules`, `/alerts`, `/channels`, `/health`
+
+</details>
+
+<details>
+<summary><b>📄 Reports — отчётность</b></summary>
+
+- **8 шаблонов:** список пользователей, матрица ролей, заявки на доступ, сводка аудита, инциденты безопасности, неактивные пользователи, аудит привилегий, обзор соответствия
+- **Форматы:** CSV · XLSX (openpyxl со стилями) · PDF (WeasyPrint, с fallback на текст)
+- Асинхронная генерация через Celery, статус по WebSocket (`/ws/reports`)
+- Расписания с cron-выражениями (`@daily`, `@weekly`, `HH:MM`)
+- **API:** `/api/reports/templates`, `/reports`, `/schedules`
+
+</details>
+
+<details>
+<summary><b>🎯 Симулятор угроз</b></summary>
+
+Специальный модуль для демонстрации работы правил выявления без ожидания реальных событий.
+
+- Доступен по адресу: [`/monitor/simulator`](http://localhost:5173/monitor/simulator)
+- Простые правила: создаёт реальные записи в `audit_log` и немедленно проверяет правило
+- Сложные правила: создаёт alert напрямую с реалистичными деталями
+- После нажатия кнопки алерт мгновенно появляется в `/monitor/alerts` и письмо уходит в MailHog
+- **API:** `POST /api/simulation/run/{rule_code}`, `POST /api/simulation/run-all`
+
+</details>
+
+---
+
+## Kafka-топики
+
+| Топик | Продюсер | Консьюмер | Описание |
+|-------|----------|-----------|----------|
+| `hr.events` | HR-mock | Identity | Кадровые события: найм, перевод, увольнение |
+| `identity.users` | Identity | Access | Создание/изменение/блокировка пользователей |
+| `identity.lifecycle` | Identity | Monitor | Жизненный цикл для аудита |
+| `access.roles` | Access | Monitor | Назначение/отзыв ролей |
+| `access.requests` | Access | Monitor | Заявки на доступ |
+| `monitor.alerts` | Monitor | — | Сработавшие правила выявления |
+| `audit.events` | Outbox publisher | Logstash → ES | Поток аудит-событий (6 партиций) |
+| `reports.notifications` | Reports | — | Готовность отчётов |
+
+---
+
+## Разработка
+
+### Тесты
 
 ```bash
-bash scripts/kibana-import.sh
+# Запустить все тесты
+docker compose exec backend pytest -v
+
+# С отчётом о покрытии
+docker compose exec backend pytest --cov=app --cov-report=term-missing
+
+# Конкретный модуль
+docker compose exec backend pytest tests/test_monitor/ -v
 ```
 
-Kibana доступна по адресу `http://localhost:5601`.
-Перейти к дашбордам: **Analytics → Dashboards**.
+> Целевое покрытие: **≥ 70%**
 
-Доступные дашборды:
-- **Security Overview** — общая статистика событий
-- **User Activity** — активность пользователей
-- **Access Control** — изменения ролей и заявки
-- **Security Incidents** — неудачные входы и критические операции
-- **Compliance Overview** — привилегированные действия и ошибки
-- **System Logs** — структурированные логи приложения (`app-logs-*`)
-
-> Данные в дашбордах появятся после того как outbox-publisher отправит события в Elasticsearch (Celery-задача `monitor.publish_outbox` запускается каждые 10 сек).
-
-## Диагностика
+### Локально (без Docker)
 
 ```bash
-# Статус всех контейнеров
+cd backend
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload
+
+cd frontend
+npm install && npm run dev
+```
+
+### Полезные команды
+
+```bash
+# Статус контейнеров
 docker compose ps
 
 # Логи конкретного сервиса
 docker compose logs -f backend
 docker compose logs -f worker
-docker compose logs -f kafka
 
-# Проверить что Kafka-топики созданы
-docker compose logs kafka-init
+# Применить новые миграции
+docker compose exec backend alembic upgrade head
 
-# Перезапустить упавший сервис
-docker compose restart backend
-
-# Принудительно переимпортировать Kibana-дашборды
+# Принудительно импортировать Kibana-дашборды
 bash scripts/kibana-import.sh
+
+# Полный сброс данных (с подтверждением)
+bash scripts/reset.sh
 ```
-
-### Мониторинг через UI
-
-- **Kafka UI** (`http://localhost:8080`) — просмотр топиков, сообщений и consumer groups в реальном времени. Топик `audit.events` показывает поток аудит-событий.
-- **Flower** (`http://localhost:5555`) — состояние Celery воркеров, история задач, очереди. Задачи `monitor.publish_outbox`, `monitor.evaluate_simple_rules`, `reports.generate_report`.
 
 ### Типичные проблемы
 
-**Kafka не стартует** — нужно подождать 1–2 минуты, Zookeeper поднимается медленно:
-```bash
-docker compose logs kafka --tail=20
-```
+| Проблема | Решение |
+|----------|---------|
+| Kafka не стартует | Подождать 1–2 мин, Zookeeper поднимается медленно: `docker compose logs kafka --tail=20` |
+| Kibana недоступна | Поднимается после ES: `docker compose logs kibana --tail=20` |
+| Отчёт завис в `pending` | Проверить воркер: `docker compose logs worker --tail=30` |
+| Нет данных в Kibana | Outbox-publisher отправляет каждые 10 сек, подождать или проверить `docker compose logs beat` |
 
-**Kibana недоступна** — поднимается 1–2 минуты после Elasticsearch:
-```bash
-docker compose logs kibana --tail=20
-```
-
-**seed.sh завис на HR-mock** — Kafka ещё не готова, seed продолжит без Kafka-событий, это нормально.
-
-**Отчёт застрял в статусе pending** — проверить что worker запущен:
-```bash
-docker compose logs worker --tail=30
-```
-
-## Сброс данных
-
-```bash
-# Полный сброс (удаляет все данные, требует подтверждения)
-bash scripts/reset.sh
-
-# После сброса — повторный запуск
-docker compose up -d && sleep 60 && bash scripts/seed.sh
-```
-
-## Архитектура
-
-```
-HR-mock ──Kafka(hr.events)──► Identity Module ──Kafka(identity.users)──► Access Module
-                                    │                                           │
-                                    └──────────────► Monitor Module ◄──────────┘
-                                                          │
-                                                    audit_log (PG)
-                                                    outbox_events
-                                                          │
-                                                    Kafka(audit.events)
-                                                          │
-                                                       Logstash
-                                                          │
-                                                    Elasticsearch
-                                                          │
-                                                       Kibana
-                                                          │
-                                                   Reports Module
-```
-
-## Модули
-
-### Identity — управление учётными записями
-- Жизненный цикл сотрудника: найм → изменения → увольнение
-- Автоматическая синхронизация с HR-системой через Kafka
-- Provisioning/deprovisioning в OpenLDAP
-- REST API: `/api/identity/users`, `/events`, `/sync`, `/positions`, `/departments`
-
-### Access — контроль доступа (RBAC)
-- 7 ролей, 14 разрешений, матрица должность→роли
-- Проверка полномочий с кэшом Redis (TTL 60 сек)
-- Заявки на доступ с процессом согласования
-- REST API: `/api/access/roles`, `/permissions`, `/requests`, `/matrix`, `/check`
-
-### Monitor — мониторинг и аудит
-- Двухконтурный аудит: PostgreSQL (источник истины) + Elasticsearch (поиск)
-- Transactional outbox: гарантированная доставка событий в Kafka
-- 10 правил выявления: 4 real-time (PostgreSQL) + 6 сложных (Elasticsearch aggregations)
-- Оповещения: email (MailHog), webhook, log, Kafka
-- REST API: `/api/monitor/dashboard`, `/audit`, `/rules`, `/alerts`, `/channels`
-
-### Reports — отчётность
-- 8 шаблонов: пользователи, роли, заявки, аудит, инциденты и др.
-- Форматы: CSV, XLSX (openpyxl), PDF (WeasyPrint)
-- Асинхронная генерация через Celery, статус по WebSocket
-- REST API: `/api/reports/templates`, `/reports`, `/schedules`
-
-## Стек технологий
-
-**Backend:** Python 3.11, FastAPI, SQLAlchemy 2.0 async, Alembic, Pydantic 2,
-aiokafka, elasticsearch[async] 8.x, Celery 5 + Redis, ldap3, openpyxl, WeasyPrint
-
-**Frontend:** React 18, TypeScript, Vite, shadcn/ui, Tailwind CSS, recharts, Zustand,
-react-router-dom, axios
-
-**Инфраструктура:** PostgreSQL 15, Redis 7, OpenLDAP, Apache Kafka 3.6 + Zookeeper,
-Elasticsearch 8.11, Logstash 8.11, Kibana 8.11, Kafka UI, Flower, Docker Compose
-
-## Kafka-топики
-
-| Топик                   | Продюсер    | Консьюмер          |
-|-------------------------|-------------|--------------------|
-| `hr.events`             | HR-mock     | Identity           |
-| `identity.users`        | Identity    | Access, Monitor    |
-| `identity.lifecycle`    | Identity    | Monitor            |
-| `access.roles`          | Access      | Monitor            |
-| `access.requests`       | Access      | Monitor            |
-| `monitor.alerts`        | Monitor     | Notification svc   |
-| `audit.events`          | Outbox pub. | Logstash → ES      |
-| `reports.notifications` | Reports     | —                  |
-
-## Разработка
-
-```bash
-# Запустить только базовые сервисы (без Kafka/ES)
-docker compose up -d postgres redis ldap mailhog backend worker beat frontend flower
-
-# Применить миграции
-docker compose exec backend alembic upgrade head
-
-# Запустить тесты
-docker compose exec backend pytest --cov=app --cov-report=term-missing -v
-
-# Посмотреть логи
-docker compose logs -f backend worker beat
-
-# Сброс данных (с подтверждением)
-bash scripts/reset.sh
-```
-
-## Тесты
-
-```bash
-# Все тесты
-docker compose exec backend pytest -v
-
-# С покрытием
-docker compose exec backend pytest --cov=app --cov-report=html
-
-# Конкретный модуль
-docker compose exec backend pytest tests/test_identity/ -v
-docker compose exec backend pytest tests/test_access/ -v
-docker compose exec backend pytest tests/test_monitor/ -v
-docker compose exec backend pytest tests/test_reports/ -v
-```
-
-Цель покрытия: **≥ 70%**
+---
 
 ## Структура проекта
 
 ```
 access_guard/
-├── docker-compose.yml
-├── .env.example
-├── docs/
-│   ├── full-spec.md         # Полное техническое задание
-│   ├── architecture.md      # Архитектурные диаграммы
-│   └── events.md            # Каталог Kafka-событий
-├── backend/
+├── 📄 docker-compose.yml          # 14 сервисов с healthcheck
+├── 📄 .env.example                # Шаблон переменных окружения
+├── 📁 docs/
+│   ├── full-spec.md               # Полное техническое задание
+│   ├── architecture.md            # Архитектурные диаграммы
+│   └── events.md                  # Каталог Kafka-событий
+├── 📁 backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI app, роутеры
-│   │   ├── celery_app.py    # Celery + beat расписания
-│   │   ├── kafka/           # producer, consumer base, events, topics
-│   │   ├── elastic/         # ES client, index templates, search
-│   │   ├── core/            # JWT auth, deps, security
+│   │   ├── main.py                # FastAPI приложение
+│   │   ├── celery_app.py          # Celery + beat расписания
+│   │   ├── kafka/                 # Producer, consumer, events, topics
+│   │   ├── elastic/               # ES client, index templates
+│   │   ├── core/                  # JWT auth, deps, security, LDAP
 │   │   └── modules/
-│   │       ├── identity/    # Users, LDAP, HR sync
-│   │       ├── access/      # RBAC, Redis cache, requests
-│   │       ├── monitor/     # Audit log, rules, alerts
-│   │       └── reports/     # Templates, generators, renderers
-│   └── tests/
-├── frontend/src/
-│   ├── pages/               # Identity, Access, Monitor, Reports
-│   ├── api/                 # axios API clients
-│   ├── store/               # Zustand (auth)
-│   └── components/          # Layout, shared UI
-├── hr-mock/                 # FastAPI симулятор HR-системы
-├── logstash/pipeline/       # audit.conf
-├── kibana/dashboards/       # 5 NDJSON дашбордов
-└── scripts/
-    ├── seed.sh              # Полный запуск с демо-данными
-    ├── seed_data.py         # Python seeder (50 сотрудников, ~5000 аудит-записей)
-    ├── reset.sh             # Сброс БД
-    ├── elastic-init.sh      # Инициализация ES index templates
-    └── kibana-import.sh     # Импорт Kibana дашбордов
+│   │       ├── identity/          # Пользователи, LDAP, HR-синхронизация
+│   │       ├── access/            # RBAC, Redis cache, заявки
+│   │       ├── monitor/           # Audit log, правила, алерты, health
+│   │       ├── reports/           # Шаблоны, генераторы, рендереры
+│   │       └── simulation/        # Симулятор угроз
+│   ├── alembic/versions/          # 7 миграций БД
+│   └── tests/                     # pytest, coverage ≥ 70%
+├── 📁 frontend/src/
+│   ├── pages/
+│   │   ├── identity/              # Users, Structure, Events, UserDetail (с timeline)
+│   │   ├── access/                # Roles, Matrix, Requests, RoleGraph
+│   │   ├── monitor/               # Dashboard, AuditLog, Alerts, Rules, Simulator, SystemHealth, Kibana
+│   │   └── reports/               # Templates, NewReport, History, Schedules
+│   ├── api/                       # axios API клиенты
+│   ├── store/                     # Zustand (auth)
+│   └── components/                # Layout, shadcn/ui компоненты
+├── 📁 hr-mock/                    # FastAPI симулятор HR-системы
+├── 📁 logstash/pipeline/          # audit.conf → Kafka → ES
+├── 📁 kibana/dashboards/          # 6 NDJSON дашбордов
+└── 📁 scripts/
+    ├── seed.sh                    # Полный старт с демо-данными
+    ├── seed_data.py               # 50 сотрудников, ~5000 аудит-записей
+    ├── reset.sh                   # Сброс БД
+    ├── elastic-init.sh            # Инициализация ES index templates
+    └── kibana-import.sh           # Импорт Kibana дашбордов
 ```
 
-## Полная спецификация
+---
 
-Детальное ТЗ со всеми REST endpoint, моделями данных, правилами выявления
-и переменными окружения: [`docs/full-spec.md`](docs/full-spec.md)
+## Стек технологий
+
+**Backend**
+`Python 3.11` · `FastAPI` · `SQLAlchemy 2.0 async` · `Alembic` · `Pydantic 2` · `aiokafka` · `elasticsearch[async] 8.x` · `Celery 5` · `Redis` · `ldap3` · `openpyxl` · `WeasyPrint`
+
+**Frontend**
+`React 18` · `TypeScript` · `Vite` · `shadcn/ui` · `Tailwind CSS` · `recharts` · `Zustand` · `react-router-dom` · `axios`
+
+**Инфраструктура**
+`PostgreSQL 15` · `Redis 7` · `OpenLDAP` · `Apache Kafka 3.6` · `Zookeeper` · `Elasticsearch 8.11` · `Logstash 8.11` · `Kibana 8.11` · `Kafka UI` · `Flower` · `MailHog` · `Docker Compose`
+
+---
+
+<div align="center">
+
+📖 Детальное ТЗ со всеми REST-эндпоинтами, моделями данных и правилами выявления: [`docs/full-spec.md`](docs/full-spec.md)
+
+</div>
