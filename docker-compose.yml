@@ -99,7 +99,7 @@ services:
         condition: service_healthy
     volumes:
       - ./scripts/create-topics.sh:/create-topics.sh
-    entrypoint: ["/bin/bash", "/create-topics.sh"]
+    entrypoint: ["/bin/bash", "-c", "tr -d '\\r' < /create-topics.sh | bash"]
     restart: "no"
 
   # ─── ELK (Этап 2) ──────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ services:
     image: curlimages/curl:8.5.0
     volumes:
       - ./scripts:/scripts:ro
-    entrypoint: ["/bin/sh", "/scripts/elastic-init.sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /scripts/elastic-init.sh | sh"]
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
     depends_on:
