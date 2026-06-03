@@ -191,3 +191,28 @@ async def test_schedule_should_run():
     # Run 2 days ago — daily should run
     two_days_ago = now - timedelta(days=2)
     assert _should_run("@daily", two_days_ago, now) is True
+
+    # Run 8 days ago — weekly should run
+    eight_days_ago = now - timedelta(days=8)
+    assert _should_run("@weekly", eight_days_ago, now) is True
+
+    # Run 3 days ago — weekly should NOT run
+    three_days_ago = now - timedelta(days=3)
+    assert _should_run("@weekly", three_days_ago, now) is False
+
+    # @midnight alias for @daily
+    assert _should_run("@midnight", two_days_ago, now) is True
+
+    # HH:MM format — already past time today and last run was yesterday
+    yesterday = now - timedelta(days=1)
+    past_time = f"{now.hour:02d}:00"  # same hour, minute 0 — already past
+    assert _should_run(past_time, yesterday, now) is True
+
+    # HH:MM format — not yet reached today
+    future_hour = (now.hour + 2) % 24
+    future_time = f"{future_hour:02d}:59"
+    if future_hour > now.hour:  # only test if clearly in the future
+        assert _should_run(future_time, yesterday, now) is False
+
+    # Invalid cron expression — should return False
+    assert _should_run("invalid_cron", two_hours_ago, now) is False

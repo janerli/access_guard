@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import redis.asyncio as aioredis
+from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as _settings
 from app.core.deps import require_roles
 from app.database import get_db
 from app.elastic.client import get_elastic_client
@@ -71,12 +73,11 @@ async def system_health(db: AsyncSession = Depends(get_db)):
 
     # Elasticsearch — create a fresh client per health check to avoid
     # stale singleton connections and event-loop issues.
+    # AsyncElasticsearch is imported at module level so tests can patch it.
     es_status = ServiceStatus(status="down")
     try:
-        from elasticsearch import AsyncElasticsearch
-        from app.config import settings as _s
         _es = AsyncElasticsearch(
-            hosts=[_s.ELASTICSEARCH_URL],
+            hosts=[_settings.ELASTICSEARCH_URL],
             request_timeout=3,
             max_retries=1,
             retry_on_timeout=False,
