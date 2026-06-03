@@ -36,13 +36,19 @@ from app.modules.monitor.schemas import (
     AuditLogListResponse,
     AuditLogOut,
     DashboardMetrics,
+    DayCount,
     NotificationChannelCreate,
     NotificationChannelOut,
     NotificationChannelUpdate,
     RuleTestResult,
+    UserCount,
 )
 
 router = APIRouter()
+
+# Health sub-router
+from app.modules.monitor.health import router as _health_router
+router.include_router(_health_router)
 
 _CAN_READ = (AdminRole.system_admin, AdminRole.security_officer, AdminRole.auditor)
 _CAN_MANAGE = (AdminRole.system_admin, AdminRole.security_officer)
@@ -54,6 +60,7 @@ _INTERNAL = (AdminRole.system_admin, AdminRole.security_officer, AdminRole.hr_op
 @router.get("/dashboard", response_model=DashboardMetrics, dependencies=[require_roles(*_CAN_READ)])
 async def get_dashboard(db: Annotated[AsyncSession, Depends(get_db)]):
     from datetime import date, timedelta, timezone
+    from sqlalchemy import cast, Date as SADate
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_today = (await db.execute(
@@ -93,6 +100,31 @@ async def get_dashboard(db: Annotated[AsyncSession, Depends(get_db)]):
     )).all()
     events_by_result = {row[0].value: row[1] for row in result_rows}
 
+    # Last 7 days event counts
+    week_start = today_start - timedelta(days=6)
+    day_rows = (await db.execute(
+        select(cast(AuditLog.timestamp, SADate), func.count(AuditLog.id))
+        .where(AuditLog.timestamp >= week_start)
+        .group_by(cast(AuditLog.timestamp, SADate))
+        .order_by(cast(AuditLog.timestamp, SADate))
+    )).all()
+    # Fill all 7 days including zeros
+    day_map = {str(r[0]): r[1] for r in day_rows}
+    events_last_7_days = []
+    for i in range(6, -1, -1):
+        d = (today_start - timedelta(days=i)).date()
+        events_last_7_days.append(DayCount(date=str(d), count=day_map.get(str(d), 0)))
+
+    # Top 5 users by event count last 7 days
+    top_user_rows = (await db.execute(
+        select(AuditLog.actor_username, func.count(AuditLog.id).label("cnt"))
+        .where(AuditLog.timestamp >= week_start, AuditLog.actor_username != "")
+        .group_by(AuditLog.actor_username)
+        .order_by(desc(func.count(AuditLog.id)))
+        .limit(5)
+    )).all()
+    top_users = [UserCount(username=r[0], count=r[1]) for r in top_user_rows]
+
     return DashboardMetrics(
         total_events_today=total_today,
         failed_logins_today=failed_logins_today,
@@ -100,6 +132,8 @@ async def get_dashboard(db: Annotated[AsyncSession, Depends(get_db)]):
         critical_alerts=critical_alerts,
         events_by_module=events_by_module,
         events_by_result=events_by_result,
+        events_last_7_days=events_last_7_days,
+        top_users=top_users,
     )
 
 
@@ -292,6 +326,8 @@ async def list_alerts(
     db: Annotated[AsyncSession, Depends(get_db)],
     status: Optional[AlertStatus] = None,
     severity: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -302,6 +338,10 @@ async def list_alerts(
     if severity:
         from app.models.monitor import AlertSeverity as AS
         q = q.where(Alert.severity == AS(severity))
+    if date_from:
+        q = q.where(Alert.triggered_at >= date_from)
+    if date_to:
+        q = q.where(Alert.triggered_at <= date_to)
     total = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
     items = (await db.execute(
         q.order_by(desc(Alert.triggered_at)).offset((page - 1) * page_size).limit(page_size)

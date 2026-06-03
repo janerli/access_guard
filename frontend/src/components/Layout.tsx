@@ -37,6 +37,7 @@ const NAV_ITEMS = [
       { to: "/access/roles", label: "Роли" },
       { to: "/access/matrix", label: "Матрица доступа" },
       { to: "/access/requests", label: "Заявки" },
+      { to: "/access/graph", label: "Граф ролей" },
     ],
   },
   {
@@ -53,6 +54,7 @@ const NAV_ITEMS = [
       { to: "/monitor/alerts", label: "Оповещения" },
       { to: "/monitor/rules", label: "Правила" },
       { to: "/monitor/simulator", label: "Симулятор угроз" },
+      { to: "/monitor/health", label: "Состояние системы" },
       { to: "/monitor/kibana", label: "Kibana" },
     ],
   },
@@ -168,11 +170,13 @@ export default function Layout() {
         {/* User info */}
         <div className="px-4 py-4 border-t border-slate-700">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-semibold">
+            <NavLink to="/profile" className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 transition-colors" title="Профиль">
               {user?.full_name?.[0] ?? "A"}
-            </div>
+            </NavLink>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
+              <NavLink to="/profile" className="text-sm font-medium text-white truncate hover:text-blue-300 transition-colors block">
+                {user?.full_name}
+              </NavLink>
               <p className="text-xs text-slate-400 truncate">
                 {user?.role ? ROLE_LABELS[user.role] : ""}
               </p>

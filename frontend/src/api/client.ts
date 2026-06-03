@@ -44,6 +44,8 @@ export const authApi = {
   me: () => api.get("/auth/me"),
   logout: () => api.post("/auth/logout"),
   refresh: () => api.post("/auth/refresh"),
+  changePassword: (current_password: string, new_password: string) =>
+    api.patch("/auth/me/password", { current_password, new_password }),
 };
 
 export default api;

@@ -88,6 +88,16 @@ export interface NotificationChannel {
   is_enabled: boolean;
 }
 
+export interface DayCount {
+  date: string;
+  count: number;
+}
+
+export interface UserCount {
+  username: string;
+  count: number;
+}
+
 export interface DashboardMetrics {
   total_events_today: number;
   failed_logins_today: number;
@@ -95,6 +105,24 @@ export interface DashboardMetrics {
   critical_alerts: number;
   events_by_module: Record<string, number>;
   events_by_result: Record<string, number>;
+  events_last_7_days: DayCount[];
+  top_users: UserCount[];
+}
+
+export interface ServiceStatus {
+  status: "ok" | "degraded" | "down";
+  latency_ms?: number;
+}
+
+export interface HealthResponse {
+  postgres: ServiceStatus;
+  redis: ServiceStatus;
+  elasticsearch: ServiceStatus;
+  kafka: ServiceStatus;
+  outbox_pending: number;
+  outbox_failed: number;
+  last_celery_beat: string | null;
+  checked_at: string;
 }
 
 export const monitorApi = {
@@ -136,6 +164,8 @@ export const monitorApi = {
   listAlerts: (params: {
     status?: string;
     severity?: string;
+    date_from?: string;
+    date_to?: string;
     page?: number;
     page_size?: number;
   }) => api.get<AlertsListResponse>("/monitor/alerts", { params }),
@@ -161,4 +191,6 @@ export const monitorApi = {
 
   getKibanaToken: () =>
     api.get<{ embed_url: string; token: string | null }>("/monitor/kibana-token"),
+
+  getHealth: () => api.get<HealthResponse>("/monitor/health"),
 };

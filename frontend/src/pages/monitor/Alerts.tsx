@@ -22,20 +22,24 @@ export default function Alerts() {
   const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterSeverity, setFilterSeverity] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
   const [activeAlert, setActiveAlert] = useState<Alert | null>(null);
   const [comment, setComment] = useState("");
   const [action, setAction] = useState<"acknowledge" | "resolve" | "false_positive" | null>(null);
 
   const load = async () => {
-    const params: Record<string, unknown> = { page, page_size: 20 };
+    const params: Parameters<typeof monitorApi.listAlerts>[0] = { page, page_size: 20 };
     if (filterStatus) params.status = filterStatus;
     if (filterSeverity) params.severity = filterSeverity;
-    const res = await monitorApi.listAlerts(params as Parameters<typeof monitorApi.listAlerts>[0]);
+    if (filterDateFrom) params.date_from = filterDateFrom;
+    if (filterDateTo) params.date_to = filterDateTo;
+    const res = await monitorApi.listAlerts(params);
     setItems(res.data.items);
     setTotal(res.data.total);
   };
 
-  useEffect(() => { load(); }, [page, filterStatus, filterSeverity]);
+  useEffect(() => { void load(); }, [page, filterStatus, filterSeverity, filterDateFrom, filterDateTo]);
 
   const handleAction = async () => {
     if (!activeAlert || !action) return;
@@ -45,7 +49,7 @@ export default function Alerts() {
     setActiveAlert(null);
     setComment("");
     setAction(null);
-    load();
+    void load();
   };
 
   const totalPages = Math.ceil(total / 20);
@@ -55,9 +59,9 @@ export default function Alerts() {
       <h1 className="text-2xl font-bold">Оповещения</h1>
 
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap items-center">
         <select className="border rounded px-2 py-1 text-sm"
-          value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
           <option value="">Все статусы</option>
           <option value="new">Новые</option>
           <option value="acknowledged">В работе</option>
@@ -65,12 +69,28 @@ export default function Alerts() {
           <option value="false_positive">Ложные</option>
         </select>
         <select className="border rounded px-2 py-1 text-sm"
-          value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}>
+          value={filterSeverity} onChange={e => { setFilterSeverity(e.target.value); setPage(1); }}>
           <option value="">Все severity</option>
           {["critical","high","medium","low","info"].map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        <div className="flex items-center gap-1 text-sm">
+          <span className="text-muted-foreground text-xs">С:</span>
+          <input type="datetime-local" className="border rounded px-2 py-1 text-sm"
+            value={filterDateFrom} onChange={e => { setFilterDateFrom(e.target.value); setPage(1); }} />
+        </div>
+        <div className="flex items-center gap-1 text-sm">
+          <span className="text-muted-foreground text-xs">По:</span>
+          <input type="datetime-local" className="border rounded px-2 py-1 text-sm"
+            value={filterDateTo} onChange={e => { setFilterDateTo(e.target.value); setPage(1); }} />
+        </div>
+        {(filterStatus || filterSeverity || filterDateFrom || filterDateTo) && (
+          <button className="text-xs text-blue-600 hover:underline"
+            onClick={() => { setFilterStatus(""); setFilterSeverity(""); setFilterDateFrom(""); setFilterDateTo(""); setPage(1); }}>
+            Сбросить фильтры
+          </button>
+        )}
       </div>
 
       {/* Cards */}

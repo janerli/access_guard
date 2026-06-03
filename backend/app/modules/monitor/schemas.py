@@ -159,6 +159,16 @@ class NotificationChannelUpdate(BaseModel):
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
+class DayCount(BaseModel):
+    date: str
+    count: int
+
+
+class UserCount(BaseModel):
+    username: str
+    count: int
+
+
 class DashboardMetrics(BaseModel):
     total_events_today: int
     failed_logins_today: int
@@ -166,6 +176,8 @@ class DashboardMetrics(BaseModel):
     critical_alerts: int
     events_by_module: dict[str, int]
     events_by_result: dict[str, int]
+    events_last_7_days: list[DayCount] = []
+    top_users: list[UserCount] = []
 
 
 # ── RuleTest ──────────────────────────────────────────────────────────────────

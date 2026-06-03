@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,6 +118,32 @@ async def logout(response: Response):
 @router.get("/me", response_model=AdminUserOut)
 async def me(current: CurrentAdmin):
     return current
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.patch("/me/password", response_model=AdminUserOut)
+async def change_password(
+    body: ChangePasswordBody,
+    current: CurrentAdmin,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    from app.core.security import hash_password, validate_password_strength
+    if not verify_password(body.current_password, current.hashed_password):
+        raise HTTPException(status_code=400, detail="Текущий пароль неверен")
+    try:
+        validate_password_strength(body.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    result = await db.execute(select(AdminUser).where(AdminUser.id == current.id))
+    user = result.scalar_one()
+    user.hashed_password = hash_password(body.new_password)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 async def _write_login_failure_audit(db: AsyncSession, username: str) -> int:

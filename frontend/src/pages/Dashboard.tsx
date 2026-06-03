@@ -1,7 +1,12 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/auth";
+import { monitorApi, type DashboardMetrics } from "@/api/monitor";
 
 const MODULES = [
   {
@@ -53,6 +58,11 @@ const MODULES = [
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+
+  useEffect(() => {
+    monitorApi.getDashboard().then((r) => setMetrics(r.data)).catch(() => {});
+  }, []);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -91,6 +101,69 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Charts */}
+      {metrics && (
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Events last 7 days sparkline */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-700">События за 7 дней</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={metrics.events_last_7_days}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    tickFormatter={(d: string) => d.slice(5)}
+                  />
+                  <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} allowDecimals={false} width={30} />
+                  <Tooltip
+                    formatter={(v: number) => [v, "событий"]}
+                    labelFormatter={(l: string) => `Дата: ${l}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: "#3b82f6" }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Top users */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-700">Топ-5 активных пользователей (7 дней)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {metrics.top_users.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">Нет данных</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={120}>
+                  <BarChart data={metrics.top_users} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="username"
+                      tick={{ fontSize: 10, fill: "#64748b" }}
+                      width={90}
+                    />
+                    <Tooltip formatter={(v: number) => [v, "событий"]} />
+                    <Bar dataKey="count" fill="#f97316" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="mt-6 p-4 bg-slate-100 rounded-xl">

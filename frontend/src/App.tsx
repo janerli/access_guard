@@ -22,6 +22,9 @@ import ReportTemplates from "@/pages/reports/Templates";
 import NewReport from "@/pages/reports/NewReport";
 import ReportHistory from "@/pages/reports/History";
 import ReportSchedules from "@/pages/reports/Schedules";
+import Profile from "@/pages/Profile";
+import RoleGraph from "@/pages/access/RoleGraph";
+import SystemHealth from "@/pages/monitor/SystemHealth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { token } = useAuthStore();
@@ -58,12 +61,16 @@ export default function App() {
           <Route path="/identity/structure" element={<Structure />} />
           <Route path="/identity/events" element={<Events />} />
 
+          {/* Profile */}
+          <Route path="/profile" element={<Profile />} />
+
           {/* Access module */}
           <Route path="/access" element={<Navigate to="/access/roles" replace />} />
           <Route path="/access/roles" element={<Roles />} />
           <Route path="/access/roles/:id" element={<RoleDetail />} />
           <Route path="/access/matrix" element={<Matrix />} />
           <Route path="/access/requests" element={<Requests />} />
+          <Route path="/access/graph" element={<RoleGraph />} />
 
           {/* Monitor module */}
           <Route path="/monitor" element={<Navigate to="/monitor/dashboard" replace />} />
@@ -73,6 +80,7 @@ export default function App() {
           <Route path="/monitor/rules" element={<Rules />} />
           <Route path="/monitor/kibana" element={<KibanaPage />} />
           <Route path="/monitor/simulator" element={<ThreatSimulator />} />
+          <Route path="/monitor/health" element={<SystemHealth />} />
 
           {/* Reports module */}
           <Route path="/reports" element={<Navigate to="/reports/templates" replace />} />

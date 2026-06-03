@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { identityApi, type LifecycleEvent, type User } from "@/api/identity";
 import { accessApi, type UserRole, type Role } from "@/api/access";
+import { monitorApi, type AuditLogEntry } from "@/api/monitor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +17,21 @@ const EVENT_LABELS: Record<string, string> = {
   leave_end: "Выход из отпуска", terminate: "Увольнение",
 };
 
+type Tab = "info" | "timeline";
+
+const TIMELINE_ICONS: Record<string, string> = {
+  hire: "🟢", create: "🟢",
+  transfer: "🔄", update: "🔄",
+  role_assign: "🔑", role_revoke: "🔑",
+  block: "🔒", suspend: "🔒",
+  restore: "🔓",
+  login_success: "🔐", login_failure: "🔐",
+};
+
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [tab, setTab] = useState<Tab>("info");
   const [user, setUser] = useState<User | null>(null);
   const [events, setEvents] = useState<LifecycleEvent[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
@@ -29,6 +42,8 @@ export default function UserDetail() {
   const [resetting, setResetting] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [assigningRole, setAssigningRole] = useState(false);
+  const [auditEntries, setAuditEntries] = useState<AuditLogEntry[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -52,6 +67,16 @@ export default function UserDetail() {
   }
 
   useEffect(() => { void load(); }, [id]);
+
+  useEffect(() => {
+    if (tab === "timeline" && id) {
+      setTimelineLoading(true);
+      monitorApi.listAudit({ actor_username: user?.username, page_size: 20 })
+        .then((r) => setAuditEntries(r.data.items))
+        .catch(() => {})
+        .finally(() => setTimelineLoading(false));
+    }
+  }, [tab, id, user?.username]);
 
   async function doAction(action: "suspend" | "restore" | "block") {
     if (!id) return;
@@ -119,131 +144,193 @@ export default function UserDetail() {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Атрибуты</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Табельный номер" value={user.employee_id} />
-            <Row label="Логин" value={user.username} />
-            <Row label="Email" value={user.email} />
-            <Row label="Должность" value={user.position?.name ?? "—"} />
-            <Row label="Отдел" value={user.department?.name ?? "—"} />
-            <Row label="LDAP DN" value={user.ldap_dn ?? "не синхронизирован"} />
-            <Row label="Создан" value={new Date(user.created_at).toLocaleString("ru-RU")} />
-            <Row label="Обновлён" value={new Date(user.updated_at).toLocaleString("ru-RU")} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-base">Действия</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {user.status === "active" && (
-              <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" size="sm" onClick={() => doAction("suspend")}>Приостановить</Button>
-                <Button variant="destructive" size="sm" onClick={() => doAction("block")}>Заблокировать</Button>
-              </div>
-            )}
-            {user.status === "suspended" && (
-              <Button size="sm" onClick={() => doAction("restore")}>Восстановить</Button>
-            )}
-            <div className="border-t pt-3">
-              <p className="text-xs text-slate-500 mb-2">Сброс пароля (LDAP)</p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  placeholder="Новый пароль"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="border rounded px-3 py-1.5 text-sm flex-1"
-                />
-                <Button size="sm" disabled={resetting || !newPassword} onClick={doResetPassword}>
-                  Сбросить
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {(["info", "timeline"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {t === "info" ? "Информация" : "Timeline"}
+          </button>
+        ))}
       </div>
 
-      {/* Роли пользователя */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Роли</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {userRoles.length === 0 ? (
-            <p className="text-sm text-slate-400">Роли не назначены</p>
+      {tab === "timeline" && (
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold text-slate-700">История активности</h2>
+          {timelineLoading ? (
+            <p className="text-slate-400 text-sm">Загрузка...</p>
+          ) : auditEntries.length === 0 ? (
+            <p className="text-slate-400 text-sm">Нет событий аудита</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {userRoles.map((ur) => (
-                <div key={ur.id} className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-3 py-1.5">
-                  <span className="text-sm font-medium text-slate-700">{ur.role.name}</span>
-                  {ur.role.is_privileged && (
-                    <Badge variant="destructive" className="text-xs px-1 py-0">привил.</Badge>
-                  )}
-                  <button
-                    onClick={() => doRevokeRole(ur.id)}
-                    className="text-slate-400 hover:text-red-500 text-xs ml-1 leading-none"
-                    title="Отозвать роль"
-                  >
-                    ✕
-                  </button>
+            <div className="relative ml-4">
+              <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-200" />
+              {auditEntries.map((entry) => {
+                const icon = TIMELINE_ICONS[entry.operation] ?? "📋";
+                const isFailure = entry.result === "failure";
+                return (
+                  <div key={entry.id} className="relative flex gap-4 pb-4">
+                    <div className="flex-shrink-0 w-5 h-5 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center text-xs -ml-2 mt-1 z-10">
+                      <span>{icon}</span>
+                    </div>
+                    <div className={`flex-1 bg-white border rounded-lg px-3 py-2 text-sm ${isFailure ? "border-red-200 bg-red-50" : "border-slate-200"}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-medium text-slate-800">{entry.operation}</span>
+                        <span className="text-xs text-slate-400">
+                          {new Date(entry.timestamp).toLocaleString("ru-RU")}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
+                        <span>модуль: {entry.module}</span>
+                        <span>цель: {entry.target_type}/{entry.target_id}</span>
+                        <span className={isFailure ? "text-red-600 font-medium" : "text-green-600"}>
+                          {entry.result}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "info" && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Атрибуты</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Row label="Табельный номер" value={user.employee_id} />
+                <Row label="Логин" value={user.username} />
+                <Row label="Email" value={user.email} />
+                <Row label="Должность" value={user.position?.name ?? "—"} />
+                <Row label="Отдел" value={user.department?.name ?? "—"} />
+                <Row label="LDAP DN" value={user.ldap_dn ?? "не синхронизирован"} />
+                <Row label="Создан" value={new Date(user.created_at).toLocaleString("ru-RU")} />
+                <Row label="Обновлён" value={new Date(user.updated_at).toLocaleString("ru-RU")} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Действия</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {user.status === "active" && (
+                  <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" size="sm" onClick={() => doAction("suspend")}>Приостановить</Button>
+                    <Button variant="destructive" size="sm" onClick={() => doAction("block")}>Заблокировать</Button>
+                  </div>
+                )}
+                {user.status === "suspended" && (
+                  <Button size="sm" onClick={() => doAction("restore")}>Восстановить</Button>
+                )}
+                <div className="border-t pt-3">
+                  <p className="text-xs text-slate-500 mb-2">Сброс пароля (LDAP)</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Новый пароль"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="border rounded px-3 py-1.5 text-sm flex-1"
+                    />
+                    <Button size="sm" disabled={resetting || !newPassword} onClick={doResetPassword}>
+                      Сбросить
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </CardContent>
+            </Card>
+          </div>
 
-          {availableRoles.length > 0 && (
-            <div className="flex gap-2 pt-1 border-t">
-              <select
-                value={selectedRoleId}
-                onChange={(e) => setSelectedRoleId(e.target.value)}
-                className="border rounded px-3 py-1.5 text-sm flex-1 bg-white"
-              >
-                <option value="">Выбрать роль...</option>
-                {availableRoles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}{r.is_privileged ? " ⚠️" : ""}</option>
-                ))}
-              </select>
-              <Button size="sm" disabled={!selectedRoleId || assigningRole} onClick={doAssignRole}>
-                Назначить
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          {/* Роли пользователя */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Роли</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {userRoles.length === 0 ? (
+                <p className="text-sm text-slate-400">Роли не назначены</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {userRoles.map((ur) => (
+                    <div key={ur.id} className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-3 py-1.5">
+                      <span className="text-sm font-medium text-slate-700">{ur.role.name}</span>
+                      {ur.role.is_privileged && (
+                        <Badge variant="destructive" className="text-xs px-1 py-0">привил.</Badge>
+                      )}
+                      <button
+                        onClick={() => doRevokeRole(ur.id)}
+                        className="text-slate-400 hover:text-red-500 text-xs ml-1 leading-none"
+                        title="Отозвать роль"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">История кадровых событий</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium text-slate-600">Событие</th>
-                <th className="text-left px-4 py-2 font-medium text-slate-600">Источник</th>
-                <th className="text-left px-4 py-2 font-medium text-slate-600">Статус</th>
-                <th className="text-left px-4 py-2 font-medium text-slate-600">Дата</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {events.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">Нет событий</td></tr>
-              ) : events.map((ev) => (
-                <tr key={ev.id}>
-                  <td className="px-4 py-2">{EVENT_LABELS[ev.event_type] ?? ev.event_type}</td>
-                  <td className="px-4 py-2 text-slate-500">{ev.source}</td>
-                  <td className="px-4 py-2">
-                    <Badge variant={ev.status === "processed" ? "default" : ev.status === "failed" ? "destructive" : "secondary"}>
-                      {ev.status}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2 text-slate-500">{new Date(ev.created_at).toLocaleString("ru-RU")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+              {availableRoles.length > 0 && (
+                <div className="flex gap-2 pt-1 border-t">
+                  <select
+                    value={selectedRoleId}
+                    onChange={(e) => setSelectedRoleId(e.target.value)}
+                    className="border rounded px-3 py-1.5 text-sm flex-1 bg-white"
+                  >
+                    <option value="">Выбрать роль...</option>
+                    {availableRoles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}{r.is_privileged ? " ⚠️" : ""}</option>
+                    ))}
+                  </select>
+                  <Button size="sm" disabled={!selectedRoleId || assigningRole} onClick={doAssignRole}>
+                    Назначить
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">История кадровых событий</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">Событие</th>
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">Источник</th>
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">Статус</th>
+                    <th className="text-left px-4 py-2 font-medium text-slate-600">Дата</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {events.length === 0 ? (
+                    <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-400">Нет событий</td></tr>
+                  ) : events.map((ev) => (
+                    <tr key={ev.id}>
+                      <td className="px-4 py-2">{EVENT_LABELS[ev.event_type] ?? ev.event_type}</td>
+                      <td className="px-4 py-2 text-slate-500">{ev.source}</td>
+                      <td className="px-4 py-2">
+                        <Badge variant={ev.status === "processed" ? "default" : ev.status === "failed" ? "destructive" : "secondary"}>
+                          {ev.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 text-slate-500">{new Date(ev.created_at).toLocaleString("ru-RU")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
