@@ -23,13 +23,15 @@ AccessGuard — прототип корпоративной системы уп�
 
 ### Ключевые возможности
 
-- 🔐 **Управление жизненным циклом** учётных записей с интеграцией HR-системы и OpenLDAP  
-- 🎭 **RBAC с матрицей доступа** — 7 ролей, 14 разрешений, заявки с многоступенчатым согласованием  
-- 📊 **Двухконтурный аудит** — PostgreSQL (источник истины) + Elasticsearch (поиск и агрегации)  
-- 🚨 **10 правил выявления угроз** — 4 real-time (PostgreSQL) + 6 через ES aggregations  
-- 📈 **Kibana дашборды** — 6 преднастроенных дашбордов для анализа безопасности  
-- 📄 **8 шаблонов отчётов** в форматах PDF / XLSX / CSV с асинхронной генерацией  
-- ⚡ **Симулятор угроз** — воспроизведение каждого из 10 правил одной кнопкой
+- 🔐 **Управление жизненным циклом** учётных записей с интеграцией HR-системы и OpenLDAP
+- 🎭 **RBAC с матрицей доступа** — 7 ролей, 14 разрешений, заявки с согласованием
+- 📊 **Двухконтурный аудит** — PostgreSQL (источник истины) + Elasticsearch (поиск и агрегации)
+- 🚨 **10 правил выявления угроз** — 4 real-time (PostgreSQL) + 6 через ES aggregations
+- 📈 **6 Kibana дашбордов** с корректным keyword-маппингом для всех полей
+- 📄 **8 шаблонов отчётов** в форматах PDF / XLSX / CSV с асинхронной генерацией
+- 🧪 **Симулятор угроз** на отдельном порту `:8001` — воспроизведение каждого правила одной кнопкой
+- 🔍 **Предпросмотр отчётов** с встроенным PDF-viewer и панелью метаданных
+- 🕵️ **Карточка события аудита** с цепочкой correlation_id из Elasticsearch
 
 ---
 
@@ -40,15 +42,23 @@ AccessGuard — прототип корпоративной системы уп�
 git clone https://github.com/janerli/access_guard.git && cd access_guard
 cp .env.example .env
 
-# 2. Запустить все сервисы (14 контейнеров)
+# 2. Запустить все сервисы (16 контейнеров)
 docker compose up -d
 
-# 3. Подождать 2–3 минуты пока поднимутся Kafka, Elasticsearch и Kibana
-docker compose ps   # все сервисы должны быть healthy
+# 3. Подождать 3–4 минуты — elastic-init запустится автоматически
+#    после готовности ES и создаст index templates ДО первой записи Logstash
+docker compose ps   # все сервисы должны быть healthy / exited(0) для elastic-init
 
 # 4. Заполнить демо-данными и импортировать Kibana-дашборды
 bash scripts/seed.sh
 ```
+
+> ⚠️ **После обновления кода** (если ES-данные были накоплены со старым маппингом):
+> ```bash
+> docker compose down -v   # удаляет тома — все данные ES/PG сотрутся
+> docker compose up -d
+> bash scripts/seed.sh
+> ```
 
 > 💡 На удалённом сервере замени `localhost` на IP-адрес машины во всех ссылках ниже.
 
@@ -59,7 +69,7 @@ bash scripts/seed.sh
 | Сервис | Адрес | Назначение |
 |--------|-------|------------|
 | 🖥️ **Frontend** | [localhost:5173](http://localhost:5173) | Основной веб-интерфейс |
-| 🎯 **Симулятор угроз** | [localhost:5173/monitor/simulator](http://localhost:5173/monitor/simulator) | Демонстрация правил выявления |
+| 🧪 **Симулятор угроз** | [localhost:8001](http://localhost:8001) | Внешняя тест-панель (без авторизации на странице) |
 | 📋 **API Swagger** | [localhost:8000/docs](http://localhost:8000/docs) | Документация REST API |
 | 📊 **Kibana** | [localhost:5601](http://localhost:5601) | Дашборды событий безопасности |
 | 📧 **MailHog** | [localhost:8025](http://localhost:8025) | Перехват email-оповещений |
@@ -95,18 +105,22 @@ bash scripts/seed.sh
                                  └──────────────────┬───────────────────────────────┘
                                                     │ Kafka: audit.events
                                                     ▼
-                                             ┌────────────┐
-                                             │  Logstash  │
+                                      ┌─────────────────────────┐
+                                      │  elastic-init (one-shot) │  ← создаёт index templates
+                                      └────────────┬────────────┘    ДО первой записи
+                                                   │
+                                             ┌─────▼──────┐
+                                             │  Logstash  │  ← @timestamp из поля timestamp
                                              └─────┬──────┘
                                                    │
                                              ┌─────▼──────┐
                                              │Elasticsearch│◄── 10 правил выявления
-                                             └─────┬──────┘
+                                             └─────┬──────┘     (6 сложных через aggregations)
                                                    │
                                     ┌──────────────┼──────────────┐
                                     ▼              ▼              ▼
                                   Kibana        Reports        Alerts → MailHog
-                                (6 dashboards) (8 templates)  (email/webhook/kafka)
+                               (6 dashboards) (8 templates)  (email/webhook/kafka)
 ```
 
 ### Ключевые архитектурные решения
@@ -118,6 +132,7 @@ bash scripts/seed.sh
 | **Redis-кэш прав** | `check_permission` кэшируется на 60 сек, инвалидируется при смене ролей |
 | **Append-only аудит** | PostgreSQL-триггер запрещает UPDATE/DELETE записей старше 1 минуты |
 | **Сквозной correlation_id** | Все события, записи аудита и алерты связаны единым UUID |
+| **elastic-init first** | Сервис `elastic-init` запускается до Logstash — гарантирует keyword-маппинг |
 
 ---
 
@@ -154,9 +169,10 @@ bash scripts/seed.sh
   | Тип | Правила |
   |-----|---------|
   | Real-time (PostgreSQL) | Множественные неудачные входы, назначение привилегированной роли, попытка изменить audit_log, сброс пароля администратора |
-  | Периодические (Elasticsearch, каждые 60 сек) | Вход в нерабочее время, массовые отказы в доступе, массовые изменения учётных записей, вход под неактивной записью, нетипичная геолокация, признаки утечки данных |
+  | Периодические (Elasticsearch, каждые 60 сек) | Аномальная активность по часам, нарушение SoD, privilege escalation, входы с разных IP, аномальная частота ошибок, активность после увольнения |
 
 - **Каналы оповещений:** email (MailHog), webhook, log, Kafka
+- **Карточка события** `/monitor/audit/:event_id` — детали + цепочка correlation_id из ES
 - **API:** `/api/monitor/dashboard`, `/audit`, `/rules`, `/alerts`, `/channels`, `/health`
 
 </details>
@@ -165,22 +181,25 @@ bash scripts/seed.sh
 <summary><b>📄 Reports — отчётность</b></summary>
 
 - **8 шаблонов:** список пользователей, матрица ролей, заявки на доступ, сводка аудита, инциденты безопасности, неактивные пользователи, аудит привилегий, обзор соответствия
-- **Форматы:** CSV · XLSX (openpyxl со стилями) · PDF (WeasyPrint, с fallback на текст)
+- **Форматы:** CSV · XLSX (openpyxl со стилями) · PDF (WeasyPrint, fallback на текст)
 - Асинхронная генерация через Celery, статус по WebSocket (`/ws/reports`)
-- Расписания с cron-выражениями (`@daily`, `@weekly`, `HH:MM`)
+- **Предпросмотр** `/reports/preview/:id` — PDF-viewer (65%) + метаданные + кнопка «Сформировать повторно»
+- Расписания с cron-выражениями (`@daily`, `@weekly`, `@hourly`, `HH:MM`)
 - **API:** `/api/reports/templates`, `/reports`, `/schedules`
 
 </details>
 
 <details>
-<summary><b>🎯 Симулятор угроз</b></summary>
+<summary><b>🧪 Симулятор угроз — внешняя тест-панель</b></summary>
 
-Специальный модуль для демонстрации работы правил выявления без ожидания реальных событий.
+Standalone HTML-страница на **[localhost:8001](http://localhost:8001)** — отдельный Docker-сервис, не требующий сборки.
 
-- Доступен по адресу: [`/monitor/simulator`](http://localhost:5173/monitor/simulator)
+- Вводишь API URL + логин/пароль → подключается → показывает все 10 сценариев
+- Кнопка «Симулировать» на каждый сценарий + «Запустить все»
+- Live-лог выполнения в реальном времени
 - Простые правила: создаёт реальные записи в `audit_log` и немедленно проверяет правило
 - Сложные правила: создаёт alert напрямую с реалистичными деталями
-- После нажатия кнопки алерт мгновенно появляется в `/monitor/alerts` и письмо уходит в MailHog
+- После нажатия алерт мгновенно появляется в `/monitor/alerts` и письмо уходит в MailHog
 - **API:** `POST /api/simulation/run/{rule_code}`, `POST /api/simulation/run-all`
 
 </details>
@@ -240,25 +259,31 @@ docker compose ps
 # Логи конкретного сервиса
 docker compose logs -f backend
 docker compose logs -f worker
+docker compose logs -f elastic-init   # проверить что templates создались
 
 # Применить новые миграции
 docker compose exec backend alembic upgrade head
 
+# Переинициализировать ES (пересоздаёт templates и удаляет старые индексы)
+bash scripts/elastic-init.sh
+
 # Принудительно импортировать Kibana-дашборды
 bash scripts/kibana-import.sh
 
-# Полный сброс данных (с подтверждением)
-bash scripts/reset.sh
+# Полный сброс с нуля (удаляет ВСЕ тома)
+docker compose down -v && docker compose up -d && sleep 120 && bash scripts/seed.sh
 ```
 
 ### Типичные проблемы
 
 | Проблема | Решение |
 |----------|---------|
+| Kibana показывает ошибки полей (Terms aggregation) | Старые индексы с неверным маппингом. Запусти: `bash scripts/elastic-init.sh` — скрипт удалит старые индексы, потом `bash scripts/seed.sh` |
+| Отчёт завис в `pending` | Проверить воркер: `docker compose logs worker --tail=30`. Убедиться что `elastic-init` завершился с кодом 0 |
+| `elastic-init` завис | `docker compose logs elastic-init` — обычно ES ещё не готов, подождать и перезапустить: `docker compose restart elastic-init` |
+| Нет данных в Kibana | Outbox-publisher отправляет каждые 10 сек. Проверить: `docker compose logs beat --tail=20` и `docker compose logs logstash --tail=20` |
 | Kafka не стартует | Подождать 1–2 мин, Zookeeper поднимается медленно: `docker compose logs kafka --tail=20` |
-| Kibana недоступна | Поднимается после ES: `docker compose logs kibana --tail=20` |
-| Отчёт завис в `pending` | Проверить воркер: `docker compose logs worker --tail=30` |
-| Нет данных в Kibana | Outbox-publisher отправляет каждые 10 сек, подождать или проверить `docker compose logs beat` |
+| ES показывает down в health-панели | Первые 2–3 минуты ES прогревается, это нормально. Если постоянно — `docker compose restart elasticsearch` |
 
 ---
 
@@ -266,44 +291,48 @@ bash scripts/reset.sh
 
 ```
 access_guard/
-├── 📄 docker-compose.yml          # 14 сервисов с healthcheck
+├── 📄 docker-compose.yml          # 16 сервисов с healthcheck
 ├── 📄 .env.example                # Шаблон переменных окружения
 ├── 📁 docs/
 │   ├── full-spec.md               # Полное техническое задание
-│   ├── architecture.md            # Архитектурные диаграммы
 │   └── events.md                  # Каталог Kafka-событий
 ├── 📁 backend/
 │   ├── app/
 │   │   ├── main.py                # FastAPI приложение
 │   │   ├── celery_app.py          # Celery + beat расписания
 │   │   ├── kafka/                 # Producer, consumer, events, topics
-│   │   ├── elastic/               # ES client, index templates
+│   │   ├── elastic/               # ES client, index templates, search
 │   │   ├── core/                  # JWT auth, deps, security, LDAP
 │   │   └── modules/
 │   │       ├── identity/          # Пользователи, LDAP, HR-синхронизация
 │   │       ├── access/            # RBAC, Redis cache, заявки
 │   │       ├── monitor/           # Audit log, правила, алерты, health
 │   │       ├── reports/           # Шаблоны, генераторы, рендереры
-│   │       └── simulation/        # Симулятор угроз
+│   │       └── simulation/        # Симулятор угроз (API)
 │   ├── alembic/versions/          # 7 миграций БД
 │   └── tests/                     # pytest, coverage ≥ 70%
 ├── 📁 frontend/src/
 │   ├── pages/
-│   │   ├── identity/              # Users, Structure, Events, UserDetail (с timeline)
+│   │   ├── identity/              # Users, Structure, Events, UserDetail
 │   │   ├── access/                # Roles, Matrix, Requests, RoleGraph
-│   │   ├── monitor/               # Dashboard, AuditLog, Alerts, Rules, Simulator, SystemHealth, Kibana
-│   │   └── reports/               # Templates, NewReport, History, Schedules
+│   │   ├── monitor/               # Dashboard, AuditLog, AuditEventDetail,
+│   │   │                          # Alerts, Rules, SystemHealth, Kibana
+│   │   └── reports/               # Templates, NewReport, History,
+│   │                              # PreviewReport, Schedules
 │   ├── api/                       # axios API клиенты
 │   ├── store/                     # Zustand (auth)
 │   └── components/                # Layout, shadcn/ui компоненты
+├── 📁 simulator-panel/
+│   └── index.html                 # Standalone тест-панель (порт 8001)
 ├── 📁 hr-mock/                    # FastAPI симулятор HR-системы
-├── 📁 logstash/pipeline/          # audit.conf → Kafka → ES
-├── 📁 kibana/dashboards/          # 6 NDJSON дашбордов
+├── 📁 logstash/pipeline/
+│   └── audit.conf                 # Kafka → ES (устанавливает @timestamp из поля timestamp)
+├── 📁 kibana/dashboards/          # 6 NDJSON дашбордов (единый index-pattern)
 └── 📁 scripts/
     ├── seed.sh                    # Полный старт с демо-данными
     ├── seed_data.py               # 50 сотрудников, ~5000 аудит-записей
     ├── reset.sh                   # Сброс БД
-    ├── elastic-init.sh            # Инициализация ES index templates
+    ├── elastic-init.sh            # Создаёт index templates + удаляет индексы с неверным маппингом
     └── kibana-import.sh           # Импорт Kibana дашбордов
 ```
 
