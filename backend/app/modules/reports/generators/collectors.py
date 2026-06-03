@@ -190,9 +190,9 @@ class ElasticCollector:
                 body={
                     "query": {"range": {"@timestamp": {"gte": date_from, "lte": date_to}}},
                     "aggs": {
-                        "by_module": {"terms": {"field": "module.keyword", "size": 10}},
-                        "by_operation": {"terms": {"field": "operation.keyword", "size": 20}},
-                        "by_result": {"terms": {"field": "result.keyword", "size": 5}},
+                        "by_module": {"terms": {"field": "module", "size": 10}},
+                        "by_operation": {"terms": {"field": "operation", "size": 20}},
+                        "by_result": {"terms": {"field": "result", "size": 5}},
                         "by_day": {"date_histogram": {"field": "@timestamp", "calendar_interval": "day"}},
                     },
                     "size": 0,
@@ -228,7 +228,7 @@ class ElasticCollector:
                 index="audit-events-*",
                 body={
                     "query": {"range": {"@timestamp": {"gte": threshold}}},
-                    "aggs": {"active_users": {"terms": {"field": "actor_username.keyword", "size": 10000}}},
+                    "aggs": {"active_users": {"terms": {"field": "actor_username", "size": 10000}}},
                     "size": 0,
                 },
             )
@@ -236,7 +236,7 @@ class ElasticCollector:
 
             all_resp = await self.es.search(
                 index="audit-events-*",
-                body={"aggs": {"all_users": {"terms": {"field": "actor_username.keyword", "size": 10000}}}, "size": 0},
+                body={"aggs": {"all_users": {"terms": {"field": "actor_username", "size": 10000}}}, "size": 0},
             )
             all_users = {b["key"] for b in all_resp["aggregations"]["all_users"]["buckets"]}
             inactive = all_users - active
@@ -264,7 +264,7 @@ class ElasticCollector:
                 index="audit-events-*",
                 body={
                     "query": {"range": {"@timestamp": {"gte": date_from, "lte": date_to}}},
-                    "aggs": {"by_result": {"terms": {"field": "result.keyword", "size": 5}}},
+                    "aggs": {"by_result": {"terms": {"field": "result", "size": 5}}},
                     "size": 0,
                 },
             )

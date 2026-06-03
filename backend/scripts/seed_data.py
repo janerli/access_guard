@@ -360,7 +360,58 @@ async def run():
             await db.commit()
             print("  4 тестовых алерта создано.")
 
-        # ── 8. Создать тестовые отчёты (в статусе ready, с файлами) ──────────
+        # ── 8. Создать заявки на доступ ───────────────────────────────────────
+        print("→ Создание заявок на доступ...")
+        from app.models.access import AccessRequest, AccessRequestStatus
+
+        existing_requests = (await db.execute(
+            select(__import__('sqlalchemy').func.count(AccessRequest.id))
+        )).scalar_one()
+
+        if existing_requests < 10:
+            all_roles = (await db.execute(select(Role).limit(10))).scalars().all()
+            if all_roles and users_all:
+                statuses = [
+                    AccessRequestStatus.pending,
+                    AccessRequestStatus.approved,
+                    AccessRequestStatus.approved,
+                    AccessRequestStatus.rejected,
+                ]
+                now = datetime.now(timezone.utc)
+                for i in range(30):
+                    user = random.choice(users_all)
+                    role = random.choice(all_roles)
+                    status = random.choice(statuses)
+                    created = now - timedelta(days=random.randint(1, 60))
+                    decided = created + timedelta(hours=random.randint(1, 48)) if status != AccessRequestStatus.pending else None
+                    req = AccessRequest(
+                        id=uuid.uuid4(),
+                        user_id=user.id,
+                        role_id=role.id,
+                        justification=random.choice([
+                            "Необходимо для выполнения проектных задач",
+                            "Требуется временный доступ к ресурсам",
+                            "Переход на новую должность",
+                            "Замещение сотрудника в отпуске",
+                            "Участие в аудиторской проверке",
+                        ]),
+                        status=status,
+                        created_at=created,
+                        decided_at=decided,
+                        decided_by=admin_objs[0].id if decided else None,
+                        decision_comment="Одобрено администратором" if status == AccessRequestStatus.approved else (
+                            "Отклонено: недостаточно оснований" if status == AccessRequestStatus.rejected else None
+                        ),
+                    )
+                    db.add(req)
+                await db.commit()
+                print("  30 заявок на доступ создано.")
+            else:
+                print("  Нет ролей или пользователей, пропускаем.")
+        else:
+            print(f"  Заявки уже существуют ({existing_requests}), пропускаем.")
+
+        # ── 9. Создать тестовые отчёты (в статусе ready, с файлами) ──────────
         print("→ Создание тестовых отчётов...")
         import os
         from app.models.reports import Report, ReportTemplate, ReportFormat, ReportStatus
@@ -400,7 +451,7 @@ async def run():
             await db.commit()
             print("  3 тестовых отчёта создано.")
 
-    print("\n✓ Наполнение данными завершено.")
+    print("\nНаполнение данными завершено.")
     print("  Пользователей: 50 | Отделов: 5 | Должностей: 20")
     print("  Записей аудита: ~5000 | Алертов: 4 | Отчётов: 3")
 
