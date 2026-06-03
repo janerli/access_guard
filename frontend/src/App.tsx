@@ -22,6 +22,8 @@ import ReportTemplates from "@/pages/reports/Templates";
 import NewReport from "@/pages/reports/NewReport";
 import ReportHistory from "@/pages/reports/History";
 import ReportSchedules from "@/pages/reports/Schedules";
+import PreviewReport from "@/pages/reports/PreviewReport";
+import AuditEventDetail from "@/pages/monitor/AuditEventDetail";
 import Profile from "@/pages/Profile";
 import RoleGraph from "@/pages/access/RoleGraph";
 import SystemHealth from "@/pages/monitor/SystemHealth";
@@ -88,6 +90,10 @@ export default function App() {
           <Route path="/reports/new/:templateCode" element={<NewReport />} />
           <Route path="/reports/history" element={<ReportHistory />} />
           <Route path="/reports/schedules" element={<ReportSchedules />} />
+          <Route path="/reports/preview/:id" element={<PreviewReport />} />
+
+          {/* Audit event detail */}
+          <Route path="/monitor/audit/:event_id" element={<AuditEventDetail />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

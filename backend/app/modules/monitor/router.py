@@ -219,6 +219,78 @@ async def get_audit_entry(event_id: UUID, db: Annotated[AsyncSession, Depends(ge
     return row
 
 
+@router.get("/audit/{event_id}/correlation", dependencies=[require_roles(*_CAN_READ)])
+async def get_correlation_chain(event_id: UUID, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return all audit events sharing the same correlation_id, sorted by timestamp."""
+    # 1. Find the source event to get its correlation_id
+    row = (await db.execute(select(AuditLog).where(AuditLog.event_id == event_id))).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+
+    result: list[dict] = []
+
+    # 2. Try Elasticsearch first (richer data, full-text)
+    if row.correlation_id:
+        try:
+            from app.elastic.client import get_elastic_client
+            es = get_elastic_client()
+            resp = await es.search(
+                index="audit-events-*",
+                body={
+                    "query": {"term": {"correlation_id": str(row.correlation_id)}},
+                    "sort": [{"@timestamp": {"order": "asc"}}],
+                    "size": 100,
+                },
+            )
+            hits = resp.get("hits", {}).get("hits", [])
+            if hits:
+                for h in hits:
+                    src = h["_source"]
+                    result.append({
+                        "event_id": src.get("event_id"),
+                        "timestamp": src.get("timestamp") or src.get("@timestamp"),
+                        "actor_username": src.get("actor_username"),
+                        "module": src.get("module"),
+                        "operation": src.get("operation"),
+                        "result": src.get("result"),
+                        "target_type": src.get("target_type"),
+                        "target_id": src.get("target_id"),
+                        "correlation_id": src.get("correlation_id"),
+                        "source": "elasticsearch",
+                    })
+                return {"correlation_id": str(row.correlation_id), "events": result, "total": len(result)}
+        except Exception:
+            pass
+
+    # 3. Fallback: query PostgreSQL by correlation_id
+    if row.correlation_id:
+        pg_rows = (await db.execute(
+            select(AuditLog)
+            .where(AuditLog.correlation_id == row.correlation_id)
+            .order_by(AuditLog.timestamp.asc())
+            .limit(100)
+        )).scalars().all()
+        for r in pg_rows:
+            result.append({
+                "event_id": str(r.event_id),
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "actor_username": r.actor_username,
+                "module": r.module.value if r.module else None,
+                "operation": r.operation.value if r.operation else None,
+                "result": r.result.value if r.result else None,
+                "target_type": r.target_type.value if r.target_type else None,
+                "target_id": r.target_id,
+                "correlation_id": str(r.correlation_id) if r.correlation_id else None,
+                "source": "postgresql",
+            })
+
+    return {
+        "correlation_id": str(row.correlation_id) if row.correlation_id else None,
+        "events": result,
+        "total": len(result),
+    }
+
+
 @router.post("/audit", response_model=AuditLogOut, status_code=201, dependencies=[require_roles(*_INTERNAL)])
 async def create_audit_entry(body: AuditLogCreate, db: Annotated[AsyncSession, Depends(get_db)]):
     from app.modules.monitor.audit_service import log

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { reportsApi, type Report, type ReportStatus } from "@/api/reports";
 
 const STATUS_STYLE: Record<ReportStatus, string> = {
@@ -23,6 +23,7 @@ export default function ReportHistory() {
   const [searchParams] = useSearchParams();
   const highlight = searchParams.get("highlight");
   const wsRef = useRef<WebSocket | null>(null);
+  const navigate = useNavigate();
 
   const load = async () => {
     const res = await reportsApi.listReports({ page, page_size: 20 });
@@ -99,19 +100,27 @@ export default function ReportHistory() {
                   {report.file_size ? `${Math.round(report.file_size / 1024)} KB` : "—"}
                 </td>
                 <td className="px-4 py-2">
-                  {report.status === "ready" && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleDownload(report)}
-                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                      onClick={() => navigate(`/reports/preview/${report.id}`)}
+                      className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-50"
                     >
-                      Скачать
+                      Просмотр
                     </button>
-                  )}
-                  {report.status === "failed" && (
-                    <span className="text-xs text-red-500" title={report.error_message || ""}>
-                      Ошибка
-                    </span>
-                  )}
+                    {report.status === "ready" && (
+                      <button
+                        onClick={() => handleDownload(report)}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Скачать
+                      </button>
+                    )}
+                    {report.status === "failed" && (
+                      <span className="text-xs text-red-500" title={report.error_message || ""}>
+                        Ошибка
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

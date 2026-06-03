@@ -17,6 +17,7 @@ def generate_report(report_id: str) -> dict:
 
 
 async def _generate_async(report_id: str) -> dict:
+    from uuid import UUID as _UUID
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from elasticsearch import AsyncElasticsearch
@@ -26,6 +27,12 @@ async def _generate_async(report_id: str) -> dict:
     from app.modules.reports.generators.base import GENERATORS
 
     os.makedirs(REPORTS_DIR, exist_ok=True)
+
+    # Convert string → UUID so asyncpg comparison works reliably
+    try:
+        report_uuid = _UUID(report_id)
+    except ValueError:
+        return {"error": f"Invalid report_id: {report_id}"}
 
     # Fresh ES client per task — asyncio.run() creates a new event loop each time,
     # so a cached singleton from a previous loop would hang or throw RuntimeError.
@@ -38,7 +45,7 @@ async def _generate_async(report_id: str) -> dict:
     async with TaskAsyncSessionLocal() as db:
         try:
             report = (await db.execute(
-                select(Report).options(selectinload(Report.template)).where(Report.id == report_id)
+                select(Report).options(selectinload(Report.template)).where(Report.id == report_uuid)
             )).scalar_one_or_none()
 
             if not report:
