@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import require_roles
 from app.database import get_db
+from app.elastic.client import get_elastic_client
+from app.kafka.producer import get_producer
 from app.models.admin import AdminRole
 
 router = APIRouter()
@@ -52,7 +55,6 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     last_celery_beat: Optional[str] = None
     try:
         from app.config import settings
-        import redis.asyncio as aioredis
         t0 = time.monotonic()
         r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         await r.ping()
@@ -69,7 +71,6 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     # Elasticsearch
     es_status = ServiceStatus(status="down")
     try:
-        from app.elastic.client import get_elastic_client
         es = get_elastic_client()
         info = await es.cluster.health(timeout="2s")
         cluster_status = info.get("status", "red")
@@ -85,7 +86,6 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     # Kafka
     kafka_status = ServiceStatus(status="down")
     try:
-        from app.kafka.producer import get_producer
         producer = await get_producer()
         if producer:
             kafka_status = ServiceStatus(status="ok")
