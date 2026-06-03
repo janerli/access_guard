@@ -118,11 +118,11 @@ async def check_login_outside_hours(es_client: Any, config: dict) -> list[RuleMa
                     "bool": {
                         "must": [
                             {"term": {"operation": "login_success"}},
-                            {"range": {"timestamp": {"gte": since}}},
+                            {"range": {"@timestamp": {"gte": since}}},
                         ],
                         "filter": [{"script": {"script": {
                             "source": (
-                                f"int h = doc['timestamp'].value.getHour(); "
+                                f"int h = doc['@timestamp'].value.getHour(); "
                                 f"return h >= {start_hour} || h < {end_hour};"
                             )
                         }}}],
@@ -156,7 +156,7 @@ async def check_mass_permission_failures(es_client: Any, config: dict) -> list[R
                     "bool": {"must": [
                         {"term": {"operation": "permission_check"}},
                         {"term": {"result": "denied"}},
-                        {"range": {"timestamp": {"gte": since}}},
+                        {"range": {"@timestamp": {"gte": since}}},
                     ]}
                 },
                 "aggs": {"by_user": {"terms": {"field": "actor_username", "size": 20, "min_doc_count": threshold}}},
@@ -184,7 +184,7 @@ async def check_bulk_user_changes(es_client: Any, config: dict) -> list[RuleMatc
                     "bool": {"must": [
                         {"terms": {"operation": ["create", "update", "delete", "block", "suspend"]}},
                         {"term": {"target_type": "user"}},
-                        {"range": {"timestamp": {"gte": since}}},
+                        {"range": {"@timestamp": {"gte": since}}},
                     ]}
                 },
                 "aggs": {"by_actor": {"terms": {"field": "actor_username", "size": 20, "min_doc_count": threshold}}},
@@ -211,7 +211,7 @@ async def check_inactive_user_login(es_client: Any, config: dict) -> list[RuleMa
             body={
                 "query": {"bool": {"must": [
                     {"term": {"operation": "login_success"}},
-                    {"range": {"timestamp": {"gte": since}}},
+                    {"range": {"@timestamp": {"gte": since}}},
                 ]}},
                 "aggs": {"users": {"terms": {"field": "actor_username", "size": 50}}},
                 "size": 0,
@@ -226,7 +226,7 @@ async def check_inactive_user_login(es_client: Any, config: dict) -> list[RuleMa
                     "query": {"bool": {"must": [
                         {"term": {"actor_username": username}},
                         {"term": {"operation": "login_success"}},
-                        {"range": {"timestamp": {"lt": since, "gte": threshold_date}}},
+                        {"range": {"@timestamp": {"lt": since, "gte": threshold_date}}},
                     ]}},
                     "size": 0,
                 },
@@ -293,7 +293,7 @@ async def check_data_exfiltration(es_client: Any, config: dict) -> list[RuleMatc
                 "query": {"bool": {"must": [
                     {"term": {"operation": "read"}},
                     {"term": {"target_type": "resource"}},
-                    {"range": {"timestamp": {"gte": since}}},
+                    {"range": {"@timestamp": {"gte": since}}},
                 ]}},
                 "aggs": {"by_user": {"terms": {"field": "actor_username", "size": 20, "min_doc_count": threshold}}},
                 "size": 0,

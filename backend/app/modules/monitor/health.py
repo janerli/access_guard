@@ -86,10 +86,9 @@ async def system_health(db: AsyncSession = Depends(get_db)):
         es_latency = round((time.monotonic() - t0) * 1000, 2)
         await _es.close()
         cluster_status = info.get("status", "red")
-        if cluster_status == "green":
+        # Single-node ES always returns yellow (replica shards unassigned) — treat as ok
+        if cluster_status in ("green", "yellow"):
             es_status = ServiceStatus(status="ok", latency_ms=es_latency)
-        elif cluster_status == "yellow":
-            es_status = ServiceStatus(status="degraded", latency_ms=es_latency)
         else:
             es_status = ServiceStatus(status="down")
     except Exception:

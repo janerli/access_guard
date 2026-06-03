@@ -14,6 +14,7 @@ AUDIT_INDEX_TEMPLATE = {
         },
         "mappings": {
             "properties": {
+                "@timestamp": {"type": "date"},
                 "event_id": {"type": "keyword"},
                 "audit_log_id": {"type": "long"},
                 "timestamp": {"type": "date"},

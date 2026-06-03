@@ -37,11 +37,11 @@ async def search_audit_events(
             range_q["gte"] = date_from.isoformat()
         if date_to:
             range_q["lte"] = date_to.isoformat()
-        must.append({"range": {"timestamp": range_q}})
+        must.append({"range": {"@timestamp": range_q}})
 
     body: dict[str, Any] = {
         "query": {"bool": {"must": must}} if must else {"match_all": {}},
-        "sort": [{"timestamp": {"order": "desc"}}],
+        "sort": [{"@timestamp": {"order": "desc"}}],
         "from": (page - 1) * size,
         "size": min(size, 1000),
     }
