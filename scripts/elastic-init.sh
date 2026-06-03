@@ -47,6 +47,7 @@ curl -sf -X PUT "$ES_URL/_index_template/$TEMPLATE_NAME" \
       },
       "mappings": {
         "properties": {
+          "@timestamp":      { "type": "date" },
           "event_id":        { "type": "keyword" },
           "audit_log_id":    { "type": "long" },
           "timestamp":       { "type": "date" },

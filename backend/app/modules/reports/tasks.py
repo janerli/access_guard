@@ -98,9 +98,10 @@ async def _generate_async(report_id: str) -> dict:
         except Exception as exc:
             logger.error("report_generation_failed", report_id=report_id, error=str(exc))
             try:
-                report.status = ReportStatus.failed
-                report.error_message = str(exc)[:500]
-                report.completed_at = datetime.now(timezone.utc)
+                if report is not None:
+                    report.status = ReportStatus.failed
+                    report.error_message = str(exc)[:500]
+                    report.completed_at = datetime.now(timezone.utc)
                 await db.commit()
             except Exception:
                 await db.rollback()

@@ -55,7 +55,13 @@ class XlsxRenderer:
             row_idx += 1
 
         for col in ws.columns:
-            max_len = max((len(str(c.value or "")) for c in col), default=10)
+            # Skip MergedCell objects — they have no .value attribute
+            values = [
+                len(str(getattr(c, "value", "") or ""))
+                for c in col
+                if not c.__class__.__name__ == "MergedCell"
+            ]
+            max_len = max(values, default=10)
             ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
 
         buf = io.BytesIO()

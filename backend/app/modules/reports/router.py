@@ -156,7 +156,7 @@ async def create_schedule(body: ReportScheduleCreate, db: Annotated[AsyncSession
         is_enabled=body.is_enabled,
     )
     db.add(schedule)
-    await db.flush()
+    await db.commit()
     await db.refresh(schedule, ["template"])
     return schedule
 
@@ -167,7 +167,9 @@ async def update_schedule(
     body: ReportScheduleUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    row = (await db.execute(select(ReportSchedule).where(ReportSchedule.id == schedule_id))).scalar_one_or_none()
+    row = (await db.execute(
+        select(ReportSchedule).options(selectinload(ReportSchedule.template)).where(ReportSchedule.id == schedule_id)
+    )).scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Расписание не найдено")
     if body.parameters is not None:
@@ -180,7 +182,8 @@ async def update_schedule(
         row.delivery_channel_id = body.delivery_channel_id
     if body.is_enabled is not None:
         row.is_enabled = body.is_enabled
-    await db.flush()
+    await db.commit()
+    await db.refresh(row)
     return row
 
 
@@ -190,6 +193,7 @@ async def delete_schedule(schedule_id: UUID, db: Annotated[AsyncSession, Depends
     if not row:
         raise HTTPException(status_code=404, detail="Расписание не найдено")
     await db.delete(row)
+    await db.commit()
 
 
 @router.post("/schedules/{schedule_id}/run", response_model=ReportOut, status_code=202, dependencies=[require_roles(*_CAN_MANAGE)])

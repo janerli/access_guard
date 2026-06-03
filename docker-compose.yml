@@ -121,6 +121,21 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Создаёт index templates ПЕРЕД тем как Logstash начнёт писать данные.
+  # Без этого ES создаст индексы с динамическим маппингом (text вместо keyword)
+  # и Terms aggregation в Kibana будет ломаться.
+  elastic-init:
+    image: curlimages/curl:8.5.0
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/elastic-init.sh"]
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: "no"
+
   logstash:
     image: docker.elastic.co/logstash/logstash:8.11.0
     depends_on:
@@ -128,6 +143,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      elastic-init:
+        condition: service_completed_successfully
     volumes:
       - ./logstash/pipeline:/usr/share/logstash/pipeline
       - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
