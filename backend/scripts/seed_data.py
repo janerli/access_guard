@@ -340,25 +340,64 @@ async def run():
         existing_alerts = (await db.execute(
             select(__import__('sqlalchemy').func.count(Alert.id))
         )).scalar_one()
-        if existing_alerts < 5:
-            rules = (await db.execute(select(AlertRule).limit(4))).scalars().all()
+        if existing_alerts < 10:
+            from app.models.monitor import AlertSeverity
+            rules = (await db.execute(select(AlertRule))).scalars().all()
             now = datetime.now(timezone.utc)
-            for i, rule in enumerate(rules):
-                severity = rule.severity
-                status = random.choice([AlertStatus.new, AlertStatus.new, AlertStatus.acknowledged, AlertStatus.resolved])
-                subject = random.choice(users_all).id if users_all else None
+            severities = [AlertSeverity.low, AlertSeverity.medium, AlertSeverity.high, AlertSeverity.critical]
+            statuses = [AlertStatus.new, AlertStatus.new, AlertStatus.acknowledged, AlertStatus.resolved]
+            alerts_created = 0
+            for i in range(40):
+                rule = random.choice(rules) if rules else None
+                if not rule:
+                    break
                 alert = Alert(
                     id=uuid.uuid4(),
                     rule_id=rule.id,
-                    triggered_at=now - timedelta(hours=random.randint(1, 72)),
-                    subject_user_id=subject,
-                    severity=severity,
-                    status=status,
-                    details={"generated_by": "seed", "count": random.randint(1, 20)},
+                    triggered_at=now - timedelta(days=random.uniform(0, 90)),
+                    subject_user_id=random.choice(users_all).id if users_all else None,
+                    severity=random.choice(severities),
+                    status=random.choice(statuses),
+                    details={"generated_by": "seed", "count": random.randint(1, 50),
+                             "ip": random.choice(IPS)},
                 )
                 db.add(alert)
+                alerts_created += 1
             await db.commit()
-            print("  4 тестовых алерта создано.")
+            print(f"  {alerts_created} тестовых алертов создано.")
+
+        # ── 7b. Гарантировать привилегированные назначения для permissions_audit ─
+        print("→ Добавление привилегированных назначений ролей...")
+        priv_count = (await db.execute(
+            select(__import__('sqlalchemy').func.count(AuditLog.id))
+            .where(AuditLog.operation == AuditOperation.role_assign)
+        )).scalar_one()
+        if priv_count < 20 and users_all and admin_objs:
+            priv_roles = ["admin", "security_officer", "system_admin", "privileged_user"]
+            now = datetime.now(timezone.utc)
+            for i in range(25):
+                ts = now - timedelta(days=random.uniform(0, 90))
+                actor = random.choice(admin_objs)
+                subject = random.choice(users_all)
+                role_name = random.choice(priv_roles)
+                entry = AuditLog(
+                    event_id=uuid.uuid4(),
+                    timestamp=ts,
+                    actor_id=actor.id,
+                    actor_username=actor.username,
+                    target_type=AuditTargetType("user"),
+                    target_id=str(subject.id)[:8],
+                    operation=AuditOperation("role_assign"),
+                    module=AuditModule("access"),
+                    result=AuditResult("success"),
+                    ip_address=random.choice(IPS),
+                    details={"role_code": role_name, "is_privileged": True},
+                    correlation_id=uuid.uuid4(),
+                    published_to_kafka=False,
+                )
+                db.add(entry)
+            await db.commit()
+            print("  25 привилегированных назначений добавлено.")
 
         # ── 8. Создать заявки на доступ ───────────────────────────────────────
         print("→ Создание заявок на доступ...")

@@ -82,8 +82,18 @@ export default function NewReport() {
     properties?: Record<string, PropSchema>;
     required?: string[];
   } | null;
-  const properties = schema?.properties || {};
   const required = schema?.required || [];
+
+  // Фиксированный порядок полей: сначала даты (с → по), потом остальные
+  const FIELD_ORDER = ["date_from", "date_to", "department_id", "position_id",
+                       "status", "severity", "inactive_days"];
+  const rawProperties = schema?.properties || {};
+  const properties: Record<string, PropSchema> = Object.fromEntries(
+    [
+      ...FIELD_ORDER.filter(k => k in rawProperties).map(k => [k, rawProperties[k]]),
+      ...Object.entries(rawProperties).filter(([k]) => !FIELD_ORDER.includes(k)),
+    ]
+  );
 
   if (loading) return <div className="p-6 text-muted-foreground">Загрузка...</div>;
   if (!template) return <div className="p-6 text-red-500">Шаблон не найден</div>;
