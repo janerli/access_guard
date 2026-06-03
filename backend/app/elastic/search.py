@@ -39,12 +39,13 @@ async def search_audit_events(
             range_q["lte"] = date_to.isoformat()
         must.append({"range": {"@timestamp": range_q}})
 
-    body: dict[str, Any] = {
-        "query": {"bool": {"must": must}} if must else {"match_all": {}},
-        "sort": [{"@timestamp": {"order": "desc"}}],
-        "from": (page - 1) * size,
-        "size": min(size, 1000),
-    }
-
+    es_query = {"bool": {"must": must}} if must else {"match_all": {}}
     index = f"{settings.ELASTICSEARCH_AUDIT_INDEX_PREFIX}-*"
-    return await client.search(index=index, body=body)
+
+    return await client.search(
+        index=index,
+        query=es_query,
+        sort=[{"@timestamp": {"order": "desc"}}],
+        from_=(page - 1) * size,
+        size=min(size, 1000),
+    )

@@ -17,6 +17,7 @@ done
 
 echo "→ Kibana: импорт дашбордов..."
 
+# Import 00_index_pattern.ndjson first so all dashboards can reference it
 for f in "$DASHBOARDS_DIR"/*.ndjson; do
   [ -f "$f" ] || continue
   echo "  Импортируем: $(basename "$f")"

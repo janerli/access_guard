@@ -249,7 +249,7 @@ async def check_unusual_geo_login(es_client: Any, config: dict) -> list[RuleMatc
             body={
                 "query": {"bool": {"must": [
                     {"term": {"operation": "login_success"}},
-                    {"range": {"timestamp": {"gte": since_recent}}},
+                    {"range": {"@timestamp": {"gte": since_recent}}},
                 ]}},
                 "aggs": {"by_user": {"terms": {"field": "actor_username", "size": 20},
                     "aggs": {"ips": {"terms": {"field": "ip_address", "size": 5}}}}},
@@ -266,7 +266,7 @@ async def check_unusual_geo_login(es_client: Any, config: dict) -> list[RuleMatc
                     "query": {"bool": {"must": [
                         {"term": {"actor_username": username}},
                         {"term": {"operation": "login_success"}},
-                        {"range": {"timestamp": {"gte": since_history, "lt": since_recent}}},
+                        {"range": {"@timestamp": {"gte": since_history, "lt": since_recent}}},
                     ]}},
                     "aggs": {"ips": {"terms": {"field": "ip_address", "size": 100}}},
                     "size": 0,

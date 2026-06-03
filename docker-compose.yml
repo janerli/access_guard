@@ -128,7 +128,7 @@ services:
     image: curlimages/curl:8.5.0
     volumes:
       - ./scripts:/scripts:ro
-    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /scripts/elastic-init.sh | sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /scripts/elastic-init.sh > /tmp/init.sh && sh /tmp/init.sh --reset"]
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
     depends_on:
@@ -151,6 +151,8 @@ services:
       - app_logs:/app/logs
     environment:
       LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ELASTICSEARCH_URL: http://elasticsearch:9200
     restart: unless-stopped
 
   kibana:

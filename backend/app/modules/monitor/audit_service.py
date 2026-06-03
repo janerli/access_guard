@@ -58,9 +58,13 @@ async def log(
         "operation": operation.value,
         "module": module.value,
         "result": result.value,
-        "ip_address": ip_address,
+        "ip_address": ip_address or None,
+        "user_agent": user_agent[:500] if user_agent else None,
         "details": details or {},
         "correlation_id": str(correlation_id) if correlation_id else None,
+        # department_code / position_code — populated from user context when available
+        "department_code": None,
+        "position_code": None,
     }
     outbox = OutboxEvent(
         audit_log_id=entry.id,

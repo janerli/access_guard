@@ -12,7 +12,8 @@
       "Bash(ls *)",
       "Bash(python3 *)",
       "Bash(git commit -m ' *)",
-      "PowerShell(gh pr list --repo janerli/access_guard --head main 2>&1)"
+      "PowerShell(gh pr list --repo janerli/access_guard --head main 2>&1)",
+      "Bash(git add *)"
     ]
   }
 }
