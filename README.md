@@ -26,13 +26,14 @@ bash scripts/seed.sh
 
 | Сервис      | Адрес                     | Назначение                       |
 |-------------|---------------------------|----------------------------------|
-| Frontend    | http://localhost:5173     | Основной интерфейс               |
-| API Swagger | http://localhost:8000/docs| Документация REST API            |
-| Kibana      | http://localhost:5601     | Дашборды событий безопасности    |
-| MailHog     | http://localhost:8025     | Перехват email-оповещений        |
-| Kafka UI    | http://localhost:8080     | Топики, сообщения, consumer groups|
-| Flower      | http://localhost:5555     | Мониторинг Celery-задач          |
-| HR-mock     | http://localhost:8001/docs| Симулятор кадровой системы       |
+| Frontend             | http://localhost:5173                    | Основной интерфейс                                          |
+| Симулятор угроз      | http://localhost:5173/monitor/simulator  | Запуск синтетических атак для демонстрации правил выявления |
+| API Swagger          | http://localhost:8000/docs               | Документация REST API                                       |
+| Kibana               | http://localhost:5601                    | Дашборды событий безопасности                               |
+| MailHog              | http://localhost:8025                    | Перехват email-оповещений                                   |
+| Kafka UI             | http://localhost:8080                    | Топики, сообщения, consumer groups                          |
+| Flower               | http://localhost:5555                    | Мониторинг Celery-задач                                     |
+| HR-mock              | http://localhost:8001/docs               | Симулятор кадровой системы                                  |
 
 ## Учётные записи (после seed.sh)
 
