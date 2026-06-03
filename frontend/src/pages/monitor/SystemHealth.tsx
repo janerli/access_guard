@@ -104,34 +104,56 @@ export default function SystemHealth() {
             </div>
           </div>
 
-          {/* Outbox queue */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Outbox очередь</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">В ожидании</span>
-                <span className={`font-semibold ${health.outbox_pending > 0 ? "text-yellow-600" : "text-green-600"}`}>
-                  {health.outbox_pending}
-                  {health.outbox_pending > 0 && " ⚠"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600">С ошибкой</span>
-                <span className={`font-semibold ${health.outbox_failed > 0 ? "text-red-600" : "text-green-600"}`}>
-                  {health.outbox_failed}
-                  {health.outbox_failed > 0 && " ✗"}
-                </span>
-              </div>
-              {health.last_celery_beat && (
+          {/* Outbox + Celery */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Transactional Outbox</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Celery Beat последний запуск</span>
-                  <span className="text-slate-800 font-mono text-xs">{health.last_celery_beat}</span>
+                  <span className="text-slate-600">В ожидании</span>
+                  <span className={`font-semibold ${health.outbox_pending > 10 ? "text-yellow-600" : "text-green-600"}`}>
+                    {health.outbox_pending}
+                    {health.outbox_pending > 10 && " ⚠"}
+                  </span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">С ошибкой</span>
+                  <span className={`font-semibold ${health.outbox_failed > 0 ? "text-red-600" : "text-green-600"}`}>
+                    {health.outbox_failed}
+                    {health.outbox_failed > 0 && " ✗"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 pt-1">
+                  0 в ожидании — норма: publisher обрабатывает каждые 10 сек
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Celery</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">Задач в Redis</span>
+                  <span className="font-semibold text-slate-800">{health.celery_tasks_in_redis}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600">Beat последний запуск</span>
+                  <span className="text-slate-600 font-mono text-xs">
+                    {health.last_celery_beat
+                      ? new Date(health.last_celery_beat).toLocaleTimeString("ru")
+                      : "не зафиксирован"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 pt-1">
+                  Beat пишет ключ <code>celery_beat_last_run</code> в Redis
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </>
       )}
     </div>

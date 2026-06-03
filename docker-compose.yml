@@ -278,6 +278,16 @@ services:
       - /app/node_modules
     restart: unless-stopped
 
+  # ─── Внешняя панель симуляции угроз (порт 8001) ───────────────────────────
+  simulator-panel:
+    image: python:3.11-alpine
+    command: python -m http.server 8001 --directory /panel
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./simulator-panel:/panel:ro
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   ldap_data:

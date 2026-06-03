@@ -34,6 +34,7 @@ class HealthResponse(BaseModel):
     kafka: ServiceStatus
     outbox_pending: int
     outbox_failed: int
+    celery_tasks_in_redis: int
     last_celery_beat: Optional[str]
     checked_at: str
 
@@ -68,16 +69,27 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
 
-    # Elasticsearch
+    # Elasticsearch — create a fresh client per health check to avoid
+    # stale singleton connections and event-loop issues.
     es_status = ServiceStatus(status="down")
     try:
-        es = get_elastic_client()
-        info = await es.cluster.health(timeout="2s")
+        from elasticsearch import AsyncElasticsearch
+        from app.config import settings as _s
+        _es = AsyncElasticsearch(
+            hosts=[_s.ELASTICSEARCH_URL],
+            request_timeout=3,
+            max_retries=1,
+            retry_on_timeout=False,
+        )
+        t0 = time.monotonic()
+        info = await _es.cluster.health(timeout="3s")
+        es_latency = round((time.monotonic() - t0) * 1000, 2)
+        await _es.close()
         cluster_status = info.get("status", "red")
         if cluster_status == "green":
-            es_status = ServiceStatus(status="ok")
+            es_status = ServiceStatus(status="ok", latency_ms=es_latency)
         elif cluster_status == "yellow":
-            es_status = ServiceStatus(status="degraded")
+            es_status = ServiceStatus(status="degraded", latency_ms=es_latency)
         else:
             es_status = ServiceStatus(status="down")
     except Exception:
@@ -92,18 +104,30 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
 
-    # Outbox stats
+    # Outbox stats — use explicit select_from so SQLAlchemy can build the query
     outbox_pending = 0
     outbox_failed = 0
     try:
         from sqlalchemy import select, func
         from app.models.monitor import OutboxEvent, OutboxStatus
         outbox_pending = (await db.execute(
-            select(func.count()).where(OutboxEvent.status == OutboxStatus.pending)
+            select(func.count(OutboxEvent.id)).where(OutboxEvent.status == OutboxStatus.pending)
         )).scalar_one()
         outbox_failed = (await db.execute(
-            select(func.count()).where(OutboxEvent.status == OutboxStatus.failed)
+            select(func.count(OutboxEvent.id)).where(OutboxEvent.status == OutboxStatus.failed)
         )).scalar_one()
+    except Exception:
+        pass
+
+    # Also report total processed today for context
+    celery_workers_count = 0
+    try:
+        import redis.asyncio as _aioredis
+        from app.config import settings as _s2
+        _r2 = _aioredis.from_url(_s2.REDIS_URL, decode_responses=True)
+        celery_keys = await _r2.keys("celery-task-meta-*")
+        celery_workers_count = len(celery_keys)
+        await _r2.aclose()
     except Exception:
         pass
 
@@ -114,6 +138,7 @@ async def system_health(db: AsyncSession = Depends(get_db)):
         kafka=kafka_status,
         outbox_pending=outbox_pending,
         outbox_failed=outbox_failed,
+        celery_tasks_in_redis=celery_workers_count,
         last_celery_beat=last_celery_beat,
         checked_at=datetime.now(timezone.utc).isoformat(),
     )

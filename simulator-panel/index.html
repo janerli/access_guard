@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AccessGuard — Симулятор угроз</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo {
+      width: 36px; height: 36px;
+      background: #3b82f6;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    header h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
+    header span { font-size: 13px; color: #94a3b8; margin-left: 4px; }
+
+    .badge {
+      margin-left: auto;
+      background: #dc2626;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    main { padding: 32px; max-width: 1100px; margin: 0 auto; }
+
+    .auth-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+    .auth-card h2 { font-size: 14px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; }
+    .auth-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 180px; }
+    label { font-size: 12px; color: #94a3b8; }
+    input {
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #f1f5f9;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: #3b82f6; }
+    button.btn {
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button.btn:hover { opacity: 0.85; }
+    button.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.btn-primary { background: #3b82f6; color: white; }
+    button.btn-danger  { background: #ef4444; color: white; }
+    button.btn-outline { background: transparent; border: 1px solid #475569; color: #cbd5e1; }
+
+    .status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+    .status-bar.ok     { background: #052e16; border: 1px solid #166534; color: #86efac; }
+    .status-bar.error  { background: #450a0a; border: 1px solid #7f1d1d; color: #fca5a5; }
+    .status-bar.idle   { background: #1e293b; border: 1px solid #334155; color: #94a3b8; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .dot.red   { background: #ef4444; }
+    .dot.gray  { background: #64748b; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 32px; }
+
+    .scenario-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color 0.2s;
+    }
+    .scenario-card:hover { border-color: #3b82f6; }
+    .scenario-card.running { border-color: #f59e0b; }
+    .scenario-card.success { border-color: #22c55e; }
+    .scenario-card.error   { border-color: #ef4444; }
+
+    .sc-header { display: flex; align-items: flex-start; gap: 10px; }
+    .sc-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .sc-icon.simple  { background: #1d4ed8; }
+    .sc-icon.complex { background: #6d28d9; }
+
+    .sc-title { font-size: 14px; font-weight: 600; color: #f1f5f9; line-height: 1.4; }
+    .sc-desc  { font-size: 12px; color: #94a3b8; line-height: 1.5; }
+
+    .sc-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .sc-badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500;
+    }
+    .sc-badge.simple  { background: #1e3a8a; color: #93c5fd; }
+    .sc-badge.complex { background: #3b0764; color: #d8b4fe; }
+    .sc-badge.realtime { background: #064e3b; color: #6ee7b7; }
+    .sc-badge.es      { background: #1c1917; color: #d6d3d1; border: 1px solid #44403c; }
+
+    .sc-result {
+      font-size: 12px; padding: 8px 12px; border-radius: 6px; line-height: 1.5;
+    }
+    .sc-result.ok     { background: #052e16; color: #86efac; }
+    .sc-result.error  { background: #450a0a; color: #fca5a5; }
+    .sc-result.running { background: #1c1917; color: #a8a29e; }
+
+    .run-all-bar {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .run-all-bar h2 { font-size: 15px; font-weight: 600; }
+    .run-all-bar p  { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+
+    .log-box {
+      background: #020617;
+      border: 1px solid #1e3a5f;
+      border-radius: 12px;
+      padding: 0;
+      overflow: hidden;
+    }
+    .log-header {
+      background: #0f172a;
+      padding: 12px 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #1e3a5f;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .log-scroll {
+      height: 260px;
+      overflow-y: auto;
+      padding: 12px 0;
+      font-family: "Fira Code", "Cascadia Code", monospace;
+      font-size: 12px;
+    }
+    .log-line {
+      padding: 3px 20px;
+      color: #64748b;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line.info    { color: #38bdf8; }
+    .log-line.success { color: #4ade80; }
+    .log-line.error   { color: #f87171; }
+    .log-line.warn    { color: #fbbf24; }
+
+    .progress {
+      height: 4px;
+      background: #1e293b;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🛡</div>
+  <div>
+    <h1>AccessGuard</h1>
+  </div>
+  <span>/ Симулятор угроз</span>
+  <span class="badge">External Test Panel</span>
+</header>
+
+<main>
+  <!-- Auth -->
+  <div class="auth-card">
+    <h2>Подключение к API</h2>
+    <div class="auth-row">
+      <div class="field">
+        <label>API URL</label>
+        <input id="apiUrl" value="http://localhost:8000" />
+      </div>
+      <div class="field">
+        <label>Логин</label>
+        <input id="username" value="admin" />
+      </div>
+      <div class="field">
+        <label>Пароль</label>
+        <input id="password" type="password" value="" placeholder="••••••••" />
+      </div>
+      <button class="btn btn-primary" onclick="connect()">Подключиться</button>
+    </div>
+  </div>
+
+  <div id="statusBar" class="status-bar idle">
+    <span class="dot gray" id="statusDot"></span>
+    <span id="statusText">Не подключено. Введите данные и нажмите «Подключиться».</span>
+  </div>
+
+  <!-- Run All -->
+  <div class="run-all-bar" id="runAllBar" style="display:none">
+    <div>
+      <h2>Запустить все сценарии</h2>
+      <p>Последовательно симулирует все 10 правил выявления угроз</p>
+    </div>
+    <button class="btn btn-danger" id="btnRunAll" onclick="runAll()">▶ Запустить все</button>
+  </div>
+
+  <!-- Scenarios grid -->
+  <div class="grid" id="scenariosGrid"></div>
+
+  <!-- Log -->
+  <div class="log-box">
+    <div class="log-header">
+      <span>Лог выполнения</span>
+      <button class="btn btn-outline" style="padding:4px 12px;font-size:11px" onclick="clearLog()">Очистить</button>
+    </div>
+    <div class="log-scroll" id="logScroll"></div>
+  </div>
+</main>
+
+<script>
+  let TOKEN = null;
+  let SCENARIOS = [];
+  let running = false;
+
+  const ICONS = {
+    simple: "⚡",
+    complex: "🔬",
+  };
+
+  const DESCRIPTIONS = {
+    MULTIPLE_FAILED_LOGINS: "Генерирует серию неудачных попыток входа для одного пользователя, превышающих пороговое значение.",
+    OFF_HOURS_ACCESS: "Создаёт события доступа с временными метками вне рабочих часов (ночью).",
+    BLOCKED_USER_ACCESS: "Симулирует попытку доступа от заблокированной учётной записи.",
+    MASS_DATA_DOWNLOAD: "Создаёт большое количество событий скачивания данных за короткий период.",
+    ANOMALOUS_HOURLY_ACTIVITY: "Имитирует аномально высокую активность по агрегациям ES.",
+    SEPARATION_OF_DUTIES: "Симулирует нарушение разделения обязанностей (SoD).",
+    PRIVILEGE_ESCALATION: "Создаёт события, характерные для повышения привилегий.",
+    SIMULTANEOUS_LOGINS: "Имитирует одновременные входы с разных IP-адресов.",
+    ANOMALOUS_ERROR_RATE: "Генерирует аномально высокий процент ошибочных операций.",
+    POST_TERMINATION_ACTIVITY: "Симулирует активность уволенного сотрудника.",
+  };
+
+  function log(msg, type = "info") {
+    const el = document.getElementById("logScroll");
+    const ts = new Date().toLocaleTimeString("ru");
+    const line = document.createElement("div");
+    line.className = `log-line ${type}`;
+    line.textContent = `[${ts}] ${msg}`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById("logScroll").innerHTML = "";
+  }
+
+  function setStatus(text, type = "idle") {
+    const bar = document.getElementById("statusBar");
+    const dot = document.getElementById("statusDot");
+    const txt = document.getElementById("statusText");
+    bar.className = `status-bar ${type}`;
+    dot.className = `dot ${type === "ok" ? "green" : type === "error" ? "red" : "gray"}`;
+    txt.textContent = text;
+  }
+
+  async function connect() {
+    const url = document.getElementById("apiUrl").value.trim();
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    log(`Подключение к ${url}...`);
+    try {
+      const res = await fetch(`${url}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      TOKEN = data.access_token;
+      window._apiUrl = url;
+      log(`✓ Авторизован как ${username}`, "success");
+      setStatus(`Подключено: ${url} | Пользователь: ${username}`, "ok");
+      await loadScenarios();
+    } catch (e) {
+      log(`✗ Ошибка: ${e.message}`, "error");
+      setStatus(`Ошибка подключения: ${e.message}`, "error");
+      TOKEN = null;
+    }
+  }
+
+  async function loadScenarios() {
+    const res = await fetch(`${window._apiUrl}/api/simulation/scenarios`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    if (!res.ok) {
+      log("Не удалось загрузить сценарии", "error");
+      return;
+    }
+    SCENARIOS = await res.json();
+    log(`Загружено ${SCENARIOS.length} сценариев`, "success");
+    renderScenarios();
+    document.getElementById("runAllBar").style.display = "flex";
+  }
+
+  function renderScenarios() {
+    const grid = document.getElementById("scenariosGrid");
+    grid.innerHTML = "";
+    SCENARIOS.forEach(sc => {
+      const card = document.createElement("div");
+      card.className = "scenario-card";
+      card.id = `card-${sc.code}`;
+      const type = sc.type || "simple";
+      const desc = DESCRIPTIONS[sc.code] || sc.description || "";
+      card.innerHTML = `
+        <div class="sc-header">
+          <div class="sc-icon ${type}">${ICONS[type] || "🔍"}</div>
+          <div>
+            <div class="sc-title">${sc.name}</div>
+          </div>
+        </div>
+        <div class="sc-desc">${desc}</div>
+        <div class="sc-badges">
+          <span class="sc-badge ${type}">${type === "simple" ? "Простое" : "Сложное"}</span>
+          <span class="sc-badge ${type === "simple" ? "realtime" : "es"}">${type === "simple" ? "Real-time" : "ES aggregation"}</span>
+        </div>
+        <div id="result-${sc.code}" style="display:none"></div>
+        <button class="btn btn-primary" id="btn-${sc.code}" onclick="runScenario('${sc.code}')">▶ Симулировать</button>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  async function runScenario(code) {
+    if (!TOKEN) { log("Сначала подключитесь", "warn"); return; }
+    const btn = document.getElementById(`btn-${code}`);
+    const card = document.getElementById(`card-${code}`);
+    const result = document.getElementById(`result-${code}`);
+
+    btn.disabled = true;
+    btn.textContent = "⏳ Выполняется...";
+    card.className = "scenario-card running";
+    result.style.display = "block";
+    result.className = "sc-result running";
+    result.textContent = "Запуск симуляции...";
+    log(`→ Симуляция: ${code}`);
+
+    try {
+      const res = await fetch(`${window._apiUrl}/api/simulation/run/${code}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+      card.className = "scenario-card success";
+      result.className = "sc-result ok";
+      const alerts = data.alerts_fired || data.alerts_created || 0;
+      const entries = data.audit_entries_created || 0;
+      result.textContent = `✓ Выполнено | Записей аудита: ${entries} | Алертов: ${alerts}`;
+      log(`✓ ${code}: записей=${entries}, алертов=${alerts}`, "success");
+    } catch (e) {
+      card.className = "scenario-card error";
+      result.className = "sc-result error";
+      result.textContent = `✗ Ошибка: ${e.message}`;
+      log(`✗ ${code}: ${e.message}`, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "▶ Повторить";
+    }
+  }
+
+  async function runAll() {
+    if (!TOKEN) { log("Сначала подключитесь", "warn"); return; }
+    if (running) return;
+    running = true;
+    const btn = document.getElementById("btnRunAll");
+    btn.disabled = true;
+    btn.textContent = "⏳ Выполняется...";
+
+    log("=== Запуск всех сценариев ===", "warn");
+    let ok = 0, fail = 0;
+
+    for (const sc of SCENARIOS) {
+      await runScenario(sc.code);
+      await new Promise(r => setTimeout(r, 600));
+      ok++;
+    }
+
+    log(`=== Завершено: ${ok} сценариев ===`, "success");
+    btn.disabled = false;
+    btn.textContent = "▶ Запустить все";
+    running = false;
+  }
+
+  // Auto-fill credentials hint
+  document.getElementById("password").placeholder = "пароль от /api/auth/login";
+</script>
+</body>
+</html>

@@ -121,6 +121,7 @@ export interface HealthResponse {
   kafka: ServiceStatus;
   outbox_pending: number;
   outbox_failed: number;
+  celery_tasks_in_redis: number;
   last_celery_beat: string | null;
   checked_at: string;
 }

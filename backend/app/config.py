@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "noreply@accessguard.local"
 
     # App
-    CORS_ORIGINS: str = "http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:8001"
     LOG_LEVEL: str = "INFO"
 
     @property
