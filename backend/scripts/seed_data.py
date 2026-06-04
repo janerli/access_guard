@@ -401,7 +401,8 @@ async def run():
 
                 for i, (op, module, target_type, result) in enumerate(steps):
                     ts = base_ts + timedelta(seconds=i * random.randint(5, 120))
-                    actor = admin.username if op in ("role_assign", "role_revoke", "block", "request_approve") else user.username
+                    is_admin_action = op in ("role_assign", "role_revoke", "block", "request_approve")
+                    actor = admin.username if is_admin_action else user.username
                     details = {"chain": True, "scenario": scenario_name, "step": i + 1}
                     if op == "role_assign":
                         details["is_privileged"] = scenario_name == "privilege_escalation"
@@ -410,7 +411,9 @@ async def run():
                     entry = AuditLog(
                         event_id=uuid.uuid4(),
                         timestamp=ts,
-                        actor_id=admin.id if actor == admin.username else user.id,
+                        # Админы не лежат в users_ext (audit_log.actor_id → users_ext.id),
+                        # поэтому для действий админа actor_id=None, личность в actor_username.
+                        actor_id=None if is_admin_action else user.id,
                         actor_username=actor,
                         target_type=AuditTargetType(target_type),
                         target_id=str(user.id)[:8],
@@ -497,7 +500,8 @@ async def run():
                 entry = AuditLog(
                     event_id=uuid.uuid4(),
                     timestamp=ts,
-                    actor_id=actor.id,
+                    # Админы не в users_ext (FK audit_log.actor_id → users_ext.id) → None.
+                    actor_id=None,
                     actor_username=actor.username,
                     target_type=AuditTargetType("user"),
                     target_id=str(subject.id)[:8],
