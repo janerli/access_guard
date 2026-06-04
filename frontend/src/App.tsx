@@ -26,6 +26,7 @@ import PreviewReport from "@/pages/reports/PreviewReport";
 import AuditEventDetail from "@/pages/monitor/AuditEventDetail";
 import Profile from "@/pages/Profile";
 import RoleGraph from "@/pages/access/RoleGraph";
+import UserAccessDetail from "@/pages/access/UserAccessDetail";
 import SystemHealth from "@/pages/monitor/SystemHealth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="/identity" element={<Navigate to="/identity/users" replace />} />
           <Route path="/identity/users" element={<Users />} />
           <Route path="/identity/users/:id" element={<UserDetail />} />
+          <Route path="/access/users/:id" element={<UserAccessDetail />} />
           <Route path="/identity/structure" element={<Structure />} />
           <Route path="/identity/events" element={<Events />} />
 

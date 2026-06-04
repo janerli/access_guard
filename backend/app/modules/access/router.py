@@ -142,6 +142,41 @@ async def revoke_role(user_id: UUID, user_role_id: UUID, db: Annotated[AsyncSess
     await service.revoke_role(db, user_role_id)
 
 
+# ── Effective permissions ─────────────────────────────────────────────────────
+
+@router.get("/users/{user_id}/effective-permissions", dependencies=[require_roles(*_CAN_READ)])
+async def get_effective_permissions(user_id: UUID, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Return all permissions a user has through their active roles, grouped by resource."""
+    from sqlalchemy.orm import selectinload as _sel
+    from app.models.access import UserRole as UR, RolePermission as RP
+
+    user_roles = (await db.execute(
+        select(UR)
+        .where(UR.user_id == user_id)
+        .options(_sel(UR.role).selectinload(Role.role_permissions).selectinload(RP.permission))
+    )).scalars().all()
+
+    # perm_code -> list of role names that grant it
+    perm_map: dict[str, list[str]] = {}
+    for ur in user_roles:
+        if ur.role:
+            for rp in ur.role.role_permissions:
+                p = rp.permission
+                if p:
+                    perm_map.setdefault(p.code, [])
+                    if ur.role.name not in perm_map[p.code]:
+                        perm_map[p.code].append(ur.role.name)
+
+    # group by resource (prefix before ":")
+    grouped: dict[str, list[dict]] = {}
+    for code, roles in sorted(perm_map.items()):
+        resource = code.split(":")[0] if ":" in code else "other"
+        grouped.setdefault(resource, [])
+        grouped[resource].append({"code": code, "granted_by_roles": roles})
+
+    return {"user_id": str(user_id), "resources": grouped, "total": len(perm_map)}
+
+
 # ── Permission check ───────────────────────────────────────────────────────────
 
 @router.post("/check", response_model=CheckPermissionResult, dependencies=[require_roles(*_CAN_READ)])

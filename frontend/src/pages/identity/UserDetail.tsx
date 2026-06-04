@@ -159,6 +159,13 @@ export default function UserDetail() {
             {t === "info" ? "Информация" : "Timeline"}
           </button>
         ))}
+        <a
+          href={`/access/users/${id}`}
+          onClick={e => { e.preventDefault(); navigate(`/access/users/${id}`); }}
+          className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-colors"
+        >
+          Роли и полномочия
+        </a>
       </div>
 
       {tab === "timeline" && (

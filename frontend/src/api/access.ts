@@ -101,6 +101,12 @@ export const accessApi = {
   revokeRole: (userId: string, userRoleId: string) =>
     api.delete(`/access/users/${userId}/roles/${userRoleId}`),
 
+  // Effective permissions
+  getEffectivePermissions: (userId: string) =>
+    api.get<{ user_id: string; resources: Record<string, { code: string; granted_by_roles: string[] }[]>; total: number }>(
+      `/access/users/${userId}/effective-permissions`
+    ),
+
   // Permission check
   checkPermission: (userId: string, permissionCode: string) =>
     api.post<{ user_id: string; permission_code: string; allowed: boolean }>("/access/check", {
