@@ -170,7 +170,9 @@ def _make_audit(
     result: AuditResult = AuditResult.success,
     details: dict | None = None,
     ts: datetime | None = None,
+    correlation_id: "UUID | None" = None,
 ) -> AuditLog:
+    from uuid import UUID as _UUID
     return AuditLog(
         event_id=uuid4(),
         timestamp=ts or datetime.now(timezone.utc),
@@ -183,7 +185,7 @@ def _make_audit(
         ip_address=f"10.99.{random.randint(1,254)}.{random.randint(1,254)}",
         user_agent="ThreatSimulator/1.0",
         details=details,
-        correlation_id=uuid4(),
+        correlation_id=correlation_id if correlation_id is not None else uuid4(),
     )
 
 
@@ -257,6 +259,7 @@ async def run_all_simulations(
 async def _sim_multiple_failed_logins(db: AsyncSession, rule: AlertRule, actor: str) -> SimResult:
     username = _sim_username()
     threshold = rule.condition_config.get("threshold", 5)
+    shared_corr = uuid4()  # все события одной атаки — одна цепочка
     entries = [
         _make_audit(
             operation=AuditOperation.login_failure,
@@ -264,6 +267,7 @@ async def _sim_multiple_failed_logins(db: AsyncSession, rule: AlertRule, actor: 
             target_type=AuditTargetType.system,
             actor_username=username,
             result=AuditResult.failure,
+            correlation_id=shared_corr,
         )
         for _ in range(threshold + 1)
     ]

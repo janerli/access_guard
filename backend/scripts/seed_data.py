@@ -335,6 +335,120 @@ async def run():
         else:
             print(f"  audit_log уже содержит {existing_audit} записей, пропускаем.")
 
+        # ── 6b. Создать цепочки событий с общим correlation_id ───────────────
+        print("→ Создание цепочек связанных событий...")
+        existing_chains = (await db.execute(
+            select(__import__('sqlalchemy').func.count(AuditLog.id))
+            .where(AuditLog.details.contains({"chain": True}))
+        )).scalar_one()
+
+        if existing_chains < 10 and users_all and admin_objs:
+            now = datetime.now(timezone.utc)
+            chain_batch: list[AuditLog] = []
+            outbox_chain: list[OutboxEvent] = []
+
+            # Сценарии с несколькими событиями в одной цепочке
+            CHAIN_SCENARIOS = [
+                # (название, список шагов)
+                ("hire_flow", [
+                    ("login_success",    "auth",     "system", "success"),
+                    ("create",           "identity", "user",   "success"),
+                    ("role_assign",      "access",   "role",   "success"),
+                    ("login_success",    "auth",     "system", "success"),
+                ]),
+                ("access_request_flow", [
+                    ("login_success",    "auth",      "system",   "success"),
+                    ("request_submit",   "access",    "role",     "success"),
+                    ("request_approve",  "access",    "role",     "success"),
+                    ("role_assign",      "access",    "role",     "success"),
+                ]),
+                ("suspicious_login", [
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_success",    "auth",     "system", "success"),
+                ]),
+                ("privilege_escalation", [
+                    ("login_success",    "auth",     "system", "success"),
+                    ("permission_check", "access",   "resource","denied"),
+                    ("permission_check", "access",   "resource","denied"),
+                    ("role_assign",      "access",   "role",   "success"),
+                    ("permission_check", "access",   "resource","success"),
+                    ("read",             "identity", "user",   "success"),
+                ]),
+                ("user_block_flow", [
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("block",            "identity", "user",   "success"),
+                    ("role_revoke",      "access",   "role",   "success"),
+                ]),
+                ("password_reset_flow", [
+                    ("login_failure",    "auth",     "system", "failure"),
+                    ("password_reset",   "identity", "user",   "success"),
+                    ("login_success",    "auth",     "system", "success"),
+                ]),
+            ]
+
+            for _ in range(20):  # создаём 20 цепочек разных сценариев
+                scenario_name, steps = random.choice(CHAIN_SCENARIOS)
+                corr = uuid.uuid4()
+                user = random.choice(users_all)
+                admin = random.choice(admin_objs)
+                base_ts = now - timedelta(days=random.uniform(0, 60))
+                ip = random.choice(IPS)
+
+                for i, (op, module, target_type, result) in enumerate(steps):
+                    ts = base_ts + timedelta(seconds=i * random.randint(5, 120))
+                    actor = admin.username if op in ("role_assign", "role_revoke", "block", "request_approve") else user.username
+                    details = {"chain": True, "scenario": scenario_name, "step": i + 1}
+                    if op == "role_assign":
+                        details["is_privileged"] = scenario_name == "privilege_escalation"
+                        details["role_code"] = "admin" if details["is_privileged"] else "employee"
+
+                    entry = AuditLog(
+                        event_id=uuid.uuid4(),
+                        timestamp=ts,
+                        actor_id=admin.id if actor == admin.username else user.id,
+                        actor_username=actor,
+                        target_type=AuditTargetType(target_type),
+                        target_id=str(user.id)[:8],
+                        operation=AuditOperation(op),
+                        module=AuditModule(module),
+                        result=AuditResult(result),
+                        ip_address=ip,
+                        user_agent="Mozilla/5.0 AccessGuard/1.0",
+                        details=details,
+                        correlation_id=corr,
+                        published_to_kafka=False,
+                    )
+                    chain_batch.append(entry)
+
+            db.add_all(chain_batch)
+            await db.flush()
+            for e in chain_batch:
+                payload = {
+                    "event_id": str(e.event_id), "audit_log_id": e.id,
+                    "timestamp": e.timestamp.isoformat(),
+                    "actor_id": str(e.actor_id) if e.actor_id else None,
+                    "actor_username": e.actor_username,
+                    "target_type": e.target_type.value, "target_id": e.target_id,
+                    "operation": e.operation.value, "module": e.module.value,
+                    "result": e.result.value, "ip_address": e.ip_address,
+                    "user_agent": e.user_agent,
+                    "details": e.details or {},
+                    "correlation_id": str(e.correlation_id),
+                    "department_code": None, "position_code": None,
+                }
+                outbox_chain.append(OutboxEvent(
+                    audit_log_id=e.id, topic=TOPIC_AUDIT_EVENTS,
+                    payload=payload, status=OutboxStatus.pending,
+                ))
+            db.add_all(outbox_chain)
+            await db.commit()
+            print(f"  {len(chain_batch)} событий в {20} цепочках создано.")
+
         # ── 7. Создать тестовые алерты ────────────────────────────────────────
         print("→ Создание тестовых алертов...")
         existing_alerts = (await db.execute(
