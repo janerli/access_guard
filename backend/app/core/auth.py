@@ -44,8 +44,13 @@ async def login(
             user.failed_login_count = 0
         audit_id = await _write_login_failure_audit(db, body.username)
         await db.commit()
-        import asyncio
-        asyncio.ensure_future(_run_evaluate_after_login(audit_id))
+        # Оценка правил — через Celery ПОСЛЕ коммита (не fire-and-forget ensure_future,
+        # который привязан к временному event loop и может быть отменён GC).
+        try:
+            from app.modules.monitor.tasks import evaluate_simple_rules
+            evaluate_simple_rules.apply_async(args=[audit_id], countdown=1)
+        except Exception:
+            pass
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверные учётные данные")
 
     user.failed_login_count = 0
@@ -59,7 +64,7 @@ async def login(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.JWT_REFRESH_TTL_DAYS * 86400,
         path="/api/auth",
@@ -85,6 +90,11 @@ async def refresh_token(
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный тип токена")
 
+    # Проверка denylist — отозванный (logout/ротация) токен использовать нельзя
+    from app.core import token_denylist
+    if await token_denylist.is_revoked(payload.get("jti")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Токен отозван")
+
     user_id = payload.get("sub")
     result = await db.execute(
         select(AdminUser).where(AdminUser.id == user_id, AdminUser.is_active.is_(True))
@@ -93,6 +103,9 @@ async def refresh_token(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
 
+    # Ротация: отзываем старый refresh-токен, чтобы его нельзя было переиспользовать
+    await token_denylist.revoke(payload.get("jti"), payload.get("exp"))
+
     new_access = create_access_token(str(user.id), user.role)
     new_refresh = create_refresh_token(str(user.id))
 
@@ -100,7 +113,7 @@ async def refresh_token(
         key="refresh_token",
         value=new_refresh,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.JWT_REFRESH_TTL_DAYS * 86400,
         path="/api/auth",
@@ -110,7 +123,20 @@ async def refresh_token(
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    refresh_token: Annotated[str | None, Cookie()] = None,
+):
+    # Реальный logout: заносим jti refresh-токена в denylist, чтобы он
+    # перестал работать на стороне сервера (а не только удаляем cookie).
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            if payload.get("type") == "refresh":
+                from app.core import token_denylist
+                await token_denylist.revoke(payload.get("jti"), payload.get("exp"))
+        except ValueError:
+            pass
     response.delete_cookie("refresh_token", path="/api/auth")
     return {"detail": "Выход выполнен"}
 
@@ -180,17 +206,3 @@ async def _write_login_failure_audit(db: AsyncSession, username: str) -> int:
     }
     db.add(OutboxEvent(audit_log_id=entry.id, topic=TOPIC_AUDIT_EVENTS, payload=payload, status=OutboxStatus.pending))
     return entry.id
-
-
-async def _run_evaluate_after_login(audit_log_id: int) -> None:
-    import asyncio
-    await asyncio.sleep(0.5)
-    try:
-        from app.modules.monitor.tasks import _evaluate_simple_async
-        result = await _evaluate_simple_async(audit_log_id)
-        if result.get("fired", 0):
-            import structlog
-            structlog.get_logger().info("login_failure_alert_fired", audit_log_id=audit_log_id, fired=result["fired"])
-    except Exception as exc:
-        import structlog
-        structlog.get_logger().warning("login_failure_evaluate_failed", error=str(exc))

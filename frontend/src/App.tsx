@@ -27,6 +27,7 @@ import AuditEventDetail from "@/pages/monitor/AuditEventDetail";
 import Profile from "@/pages/Profile";
 import RoleGraph from "@/pages/access/RoleGraph";
 import UserAccessDetail from "@/pages/access/UserAccessDetail";
+import RequestDetail from "@/pages/access/RequestDetail";
 import SystemHealth from "@/pages/monitor/SystemHealth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/access/roles/:id" element={<RoleDetail />} />
           <Route path="/access/matrix" element={<Matrix />} />
           <Route path="/access/requests" element={<Requests />} />
+          <Route path="/access/requests/:id" element={<RequestDetail />} />
           <Route path="/access/graph" element={<RoleGraph />} />
 
           {/* Monitor module */}

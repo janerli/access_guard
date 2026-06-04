@@ -1,4 +1,7 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_SECRETS = {"change-me-in-production", "change-me-generate-random-256bit-secret-here", ""}
 
 
 class Settings(BaseSettings):
@@ -37,10 +40,16 @@ class Settings(BaseSettings):
     KIBANA_URL: str = "http://kibana:5601"
     KIBANA_EMBED_URL: str = "http://localhost:5601/app/dashboards#/view"
 
+    # App environment: development | production
+    APP_ENV: str = "development"
+
     # JWT
     JWT_SECRET: str = "change-me-in-production"
     JWT_ACCESS_TTL_MIN: int = 15
     JWT_REFRESH_TTL_DAYS: int = 7
+
+    # Cookie security (True в production — refresh-cookie только по HTTPS)
+    COOKIE_SECURE: bool = False
 
     # SMTP
     SMTP_HOST: str = "mailhog"
@@ -54,6 +63,17 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+
+    @model_validator(mode="after")
+    def _validate_production_security(self):
+        # В production запрещаем стартовать с небезопасным дефолтным JWT_SECRET —
+        # иначе любой может подделать admin-токен.
+        if self.APP_ENV == "production" and self.JWT_SECRET in _INSECURE_SECRETS:
+            raise ValueError(
+                "JWT_SECRET не задан или использует небезопасный дефолт. "
+                "Задайте случайный 256-битный секрет в .env для production."
+            )
+        return self
 
 
 settings = Settings()

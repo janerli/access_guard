@@ -45,7 +45,9 @@ async def _publish_outbox_async() -> dict:
                             producer="monitor",
                             payload=row.payload,
                         )
-                        await producer.send(row.topic, value=event.model_dump(mode="json"))
+                        # send_and_wait дожидается ack брокера перед пометкой published —
+                        # иначе при сбое Kafka событие теряется, но помечено как отправленное.
+                        await producer.send_and_wait(row.topic, value=event.model_dump(mode="json"))
                         await db.execute(
                             sa_update(OutboxEvent)
                             .where(OutboxEvent.id == row_id)

@@ -13,6 +13,9 @@ from app.models.identity import UserExt
 logger = structlog.get_logger()
 
 
+_CONSUMER_GROUP = "identity-hr"
+
+
 async def handle_hr_event(event: KafkaEvent) -> None:
     payload = event.payload
     event_type = event.event_type
@@ -21,6 +24,16 @@ async def handle_hr_event(event: KafkaEvent) -> None:
 
     async with AsyncSessionLocal() as db:
         try:
+            # Дедупликация: Kafka гарантирует at-least-once, событие может
+            # прийти повторно (ребаланс/ретрай). ProcessedEvent в той же
+            # транзакции защищает от повторной обработки (дубль hire/transfer).
+            from app.models.access import ProcessedEvent
+            already = await db.get(ProcessedEvent, event.event_id)
+            if already:
+                logger.info("hr_event_duplicate_skipped", event_id=str(event.event_id), event_type=event_type)
+                return
+            db.add(ProcessedEvent(event_id=event.event_id, consumer_group=_CONSUMER_GROUP))
+
             if event_type == "hire":
                 await _handle_hire(db, employee_id, payload, correlation_id)
             elif event_type == "transfer":

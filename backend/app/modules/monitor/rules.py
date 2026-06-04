@@ -220,6 +220,7 @@ async def check_inactive_user_login(es_client: Any, config: dict) -> list[RuleMa
         recent_users = [b["key"] for b in resp["aggregations"]["users"]["buckets"]]
         results = []
         for username in recent_users:
+            # Нет входов в окне бездействия [threshold .. since)
             prev_resp = await es_client.search(
                 index="audit-events-*",
                 body={
@@ -231,7 +232,25 @@ async def check_inactive_user_login(es_client: Any, config: dict) -> list[RuleMa
                     "size": 0,
                 },
             )
-            if prev_resp["hits"]["total"]["value"] == 0:
+            if prev_resp["hits"]["total"]["value"] != 0:
+                continue
+
+            # Был ли пользователь активен ДО окна бездействия (раньше threshold_date)?
+            # Без этой проверки новый пользователь (первый вход вообще) даёт тот же
+            # сигнал, что и реально «спящий» аккаунт — ложное срабатывание.
+            older_resp = await es_client.search(
+                index="audit-events-*",
+                body={
+                    "query": {"bool": {"must": [
+                        {"term": {"actor_username": username}},
+                        {"term": {"operation": "login_success"}},
+                        {"range": {"@timestamp": {"lt": threshold_date}}},
+                    ]}},
+                    "size": 0,
+                },
+            )
+            if older_resp["hits"]["total"]["value"] > 0:
+                # Аккаунт был активен ранее, потом молчал > inactive_days, и вдруг вошёл.
                 results.append(RuleMatch(True, details={"username": username, "inactive_days": inactive_days}))
         return results
     except Exception as exc:

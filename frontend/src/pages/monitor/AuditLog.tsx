@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { monitorApi, type AuditLogEntry, type AuditOperation, type AuditModule, type AuditResult } from "@/api/monitor";
 
@@ -23,8 +23,14 @@ export default function AuditLog() {
     date_to: "",
   });
 
-  const load = async () => {
-    try {
+  // Монотонный id запроса — игнорируем ответы, пришедшие не по порядку (race).
+  const reqIdRef = useRef(0);
+
+  useEffect(() => {
+    // Дебаунс 400мс: текстовый фильтр «Пользователь» не должен слать запрос
+    // на каждое нажатие клавиши.
+    const handle = setTimeout(() => {
+      const myReqId = ++reqIdRef.current;
       const params: Record<string, unknown> = { page, page_size: PAGE_SIZE };
       if (filters.actor_username) params.actor_username = filters.actor_username;
       if (filters.operation) params.operation = filters.operation;
@@ -32,15 +38,24 @@ export default function AuditLog() {
       if (filters.result) params.result = filters.result;
       if (filters.date_from) params.date_from = filters.date_from;
       if (filters.date_to) params.date_to = filters.date_to;
-      const res = await monitorApi.listAudit(params as Parameters<typeof monitorApi.listAudit>[0]);
-      setItems(res.data.items);
-      setTotal(res.data.total);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      monitorApi.listAudit(params as Parameters<typeof monitorApi.listAudit>[0])
+        .then(res => {
+          // Применяем только если это самый свежий запрос.
+          if (myReqId === reqIdRef.current) {
+            setItems(res.data.items);
+            setTotal(res.data.total);
+          }
+        })
+        .catch(e => console.error(e));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [page, filters]);
 
-  useEffect(() => { load(); }, [page, filters]);
+  // Сброс на первую страницу при изменении фильтров.
+  const updateFilter = (patch: Partial<typeof filters>) => {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(1);
+  };
 
   const handleExport = async () => {
     const res = await monitorApi.exportAudit({ fmt: "csv" });
@@ -68,12 +83,12 @@ export default function AuditLog() {
           className="border rounded px-2 py-1 text-sm"
           placeholder="Пользователь"
           value={filters.actor_username}
-          onChange={e => setFilters(f => ({ ...f, actor_username: e.target.value }))}
+          onChange={e => updateFilter({ actor_username: e.target.value })}
         />
         <select
           className="border rounded px-2 py-1 text-sm"
           value={filters.operation}
-          onChange={e => setFilters(f => ({ ...f, operation: e.target.value }))}
+          onChange={e => updateFilter({ operation: e.target.value })}
         >
           <option value="">Все операции</option>
           {["login_success","login_failure","create","update","delete","role_assign","role_revoke","password_reset","block","suspend","permission_check"].map(op => (
@@ -83,7 +98,7 @@ export default function AuditLog() {
         <select
           className="border rounded px-2 py-1 text-sm"
           value={filters.module}
-          onChange={e => setFilters(f => ({ ...f, module: e.target.value }))}
+          onChange={e => updateFilter({ module: e.target.value })}
         >
           <option value="">Все модули</option>
           {["auth","identity","access","monitor","reports"].map(m => (
@@ -93,7 +108,7 @@ export default function AuditLog() {
         <select
           className="border rounded px-2 py-1 text-sm"
           value={filters.result}
-          onChange={e => setFilters(f => ({ ...f, result: e.target.value }))}
+          onChange={e => updateFilter({ result: e.target.value })}
         >
           <option value="">Все результаты</option>
           <option value="success">success</option>
@@ -104,13 +119,13 @@ export default function AuditLog() {
           type="datetime-local"
           className="border rounded px-2 py-1 text-sm"
           value={filters.date_from}
-          onChange={e => setFilters(f => ({ ...f, date_from: e.target.value }))}
+          onChange={e => updateFilter({ date_from: e.target.value })}
         />
         <input
           type="datetime-local"
           className="border rounded px-2 py-1 text-sm"
           value={filters.date_to}
-          onChange={e => setFilters(f => ({ ...f, date_to: e.target.value }))}
+          onChange={e => updateFilter({ date_to: e.target.value })}
         />
       </div>
 

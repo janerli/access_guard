@@ -79,6 +79,45 @@ fi
 echo "→ Генерация демо-данных (сотрудники, аудит, отчёты)..."
 MSYS_NO_PATHCONV=1 docker compose exec -T -e PYTHONPATH=/app backend python /app/scripts/seed_data.py && echo "  Демо-данные созданы." || echo "  seed_data.py завершился с ошибкой (возможно данные уже существуют)"
 
+# ── 4c. Форсированный слив outbox в Kafka ────────────────────────────────────
+# Иначе publish_outbox (beat) сливает по 100 событий раз в 10с (~8 мин на 5000),
+# и Kibana-дашборды импортируются ДО появления данных в ES → «поля не найдены».
+echo "→ Принудительная публикация outbox в Kafka..."
+MSYS_NO_PATHCONV=1 docker compose exec -T -e PYTHONPATH=/app backend python - <<'PYEOF'
+import asyncio
+from sqlalchemy import select, func
+from app.database import AsyncSessionLocal
+from app.models.monitor import OutboxEvent, OutboxStatus
+from app.modules.monitor.tasks import _publish_outbox_async
+
+async def drain():
+    total = 0
+    for _ in range(200):  # максимум 200 батчей (20000 событий)
+        async with AsyncSessionLocal() as db:
+            pending = (await db.execute(
+                select(func.count(OutboxEvent.id)).where(OutboxEvent.status == OutboxStatus.pending)
+            )).scalar_one()
+        if pending == 0:
+            break
+        res = await _publish_outbox_async()
+        total += res.get("published", 0)
+    print(f"  Опубликовано событий: {total}")
+
+asyncio.run(drain())
+PYEOF
+
+# ── 4d. Ожидание появления данных в Elasticsearch ────────────────────────────
+echo "→ Ожидание индексации в Elasticsearch (Logstash → ES)..."
+for i in $(seq 1 40); do
+  CNT=$(curl -sf "http://localhost:9200/audit-events-*/_count" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo 0)
+  if [ "$CNT" -gt 0 ] 2>/dev/null; then
+    echo "  В ES проиндексировано событий: $CNT"
+    break
+  fi
+  echo "  Ждём данные в ES... ($i/40)"
+  sleep 3
+done
+
 # ── 5. Импорт Kibana дашбордов ────────────────────────────────────────────────
 echo "→ Импорт дашбордов Kibana..."
 if curl -sf "http://localhost:5601/api/status" > /dev/null 2>&1; then

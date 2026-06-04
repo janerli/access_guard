@@ -14,12 +14,14 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
+// Один общий промис обновления токена на все параллельные 401 — иначе
+// каждый упавший запрос дёргает /auth/refresh, что ротирует токен много
+// раз и разлогинивает пользователя («thundering herd»).
+let refreshPromise: Promise<string> | null = null;
+
+async function doRefresh(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
       try {
         const res = await axios.post("/api/auth/refresh", {}, { withCredentials: true });
         const { access_token } = res.data;
@@ -27,6 +29,23 @@ api.interceptors.response.use(
           headers: { Authorization: `Bearer ${access_token}` },
         });
         useAuthStore.getState().setAuth(access_token, me.data);
+        return access_token as string;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const original = error.config;
+    if (error.response?.status === 401 && original && !original._retry) {
+      original._retry = true;
+      try {
+        const access_token = await doRefresh();
         original.headers.Authorization = `Bearer ${access_token}`;
         return api(original);
       } catch {

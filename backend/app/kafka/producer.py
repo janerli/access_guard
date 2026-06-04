@@ -34,7 +34,9 @@ async def publish_event(
     key: Optional[str] = None,
 ) -> None:
     producer = await get_producer()
-    await producer.send(
+    # send_and_wait дожидается подтверждения брокером (ack), а не только буферизации.
+    # Иначе при сбое брокера событие считается отправленным, но теряется.
+    await producer.send_and_wait(
         topic,
         value=event.model_dump(mode="json"),
         key=key,

@@ -11,20 +11,12 @@ async def main() -> None:
     from app.modules.identity.consumer import run_hr_consumer
     from app.modules.access.consumer import run_identity_user_consumer
 
-    from app.modules.monitor.tasks import publish_outbox as _outbox_beat
-
-    async def outbox_loop() -> None:
-        while True:
-            try:
-                _outbox_beat.delay()
-            except Exception as exc:
-                logger.warning("outbox_dispatch_failed", error=str(exc))
-            await asyncio.sleep(10)
-
+    # outbox-публикацию диспатчит Celery beat (monitor.publish_outbox каждые 10с).
+    # Дублирующий outbox_loop здесь приводил к двойной частоте и конкурентной
+    # обработке одних и тех же pending-строк — убран.
     await asyncio.gather(
         run_hr_consumer(),
         run_identity_user_consumer(),
-        outbox_loop(),
     )
 
 

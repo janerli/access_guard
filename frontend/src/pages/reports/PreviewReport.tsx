@@ -34,10 +34,30 @@ export default function PreviewReport() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    reportsApi.getReport(id)
-      .then(r => setReport(r.data))
-      .catch(() => setError("Отчёт не найден"))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const fetchOnce = async () => {
+      try {
+        const r = await reportsApi.getReport(id);
+        if (cancelled) return;
+        setReport(r.data);
+        // Пока отчёт генерируется — опрашиваем каждые 2с (Celery асинхронный).
+        if (r.data.status === "pending" || r.data.status === "generating") {
+          timer = setTimeout(fetchOnce, 2000);
+        }
+      } catch {
+        if (!cancelled) setError("Отчёт не найден");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchOnce();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [id]);
 
   // Загружаем PDF через API (с JWT) и создаём blob URL для iframe

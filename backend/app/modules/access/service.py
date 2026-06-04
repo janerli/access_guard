@@ -26,13 +26,21 @@ logger = structlog.get_logger()
 
 _PERM_CACHE_TTL = 60  # seconds
 
+# Singleton Redis-клиент с пулом соединений. Раньше на каждую проверку прав
+# (горячий путь) создавался новый клиент+TCP-соединение — дорого и риск
+# исчерпания сокетов под нагрузкой.
+_redis_client: Optional[AsyncRedis] = None
+
 
 def _perm_cache_key(user_id: UUID) -> str:
     return f"perms:{user_id}"
 
 
 async def _get_redis() -> AsyncRedis:
-    return AsyncRedis.from_url(settings.REDIS_URL, decode_responses=True)
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = AsyncRedis.from_url(settings.REDIS_URL, decode_responses=True)
+    return _redis_client
 
 
 # ── Permission check (cached) ──────────────────────────────────────────────────
@@ -46,8 +54,6 @@ async def check_user_permission(user_id: UUID, permission_code: str) -> bool:
             return permission_code in perms
     except Exception as exc:
         logger.warning("redis_get_failed", error=str(exc))
-    finally:
-        await redis.aclose()
 
     # Fallback: load from DB (no session available here — callers should use has_permission)
     return False
@@ -85,8 +91,6 @@ async def has_permission(db: AsyncSession, user_id: UUID, permission_code: str) 
         logger.warning("permission_check_cache_error", error=str(exc))
         perms = await get_user_permissions(db, user_id)
         return permission_code in perms
-    finally:
-        await redis.aclose()
 
 
 async def invalidate_permission_cache(user_id: UUID) -> None:
@@ -95,8 +99,23 @@ async def invalidate_permission_cache(user_id: UUID) -> None:
         await redis.delete(_perm_cache_key(user_id))
     except Exception as exc:
         logger.warning("redis_delete_failed", error=str(exc))
-    finally:
-        await redis.aclose()
+
+
+async def invalidate_cache_for_role(db: AsyncSession, role_id: UUID) -> None:
+    """Инвалидирует кэш прав ВСЕХ пользователей, у которых есть указанная роль.
+
+    Нужно при изменении набора permissions роли (add/remove permission) —
+    иначе отозванный доступ продолжает действовать до истечения TTL кэша.
+    """
+    now = datetime.now(timezone.utc)
+    user_ids = (await db.execute(
+        select(UserRole.user_id).where(
+            UserRole.role_id == role_id,
+            (UserRole.expires_at == None) | (UserRole.expires_at > now),  # noqa: E711
+        ).distinct()
+    )).scalars().all()
+    for uid in user_ids:
+        await invalidate_permission_cache(uid)
 
 
 # ── Roles ──────────────────────────────────────────────────────────────────────
@@ -168,6 +187,8 @@ async def add_permission_to_role(db: AsyncSession, role_id: UUID, permission_id:
     if not existing:
         db.add(RolePermission(role_id=role_id, permission_id=permission_id))
         await db.flush()
+        # Права роли изменились — сбрасываем кэш всех её носителей.
+        await invalidate_cache_for_role(db, role_id)
 
 
 async def remove_permission_from_role(db: AsyncSession, role_id: UUID, permission_id: UUID) -> None:
@@ -178,6 +199,8 @@ async def remove_permission_from_role(db: AsyncSession, role_id: UUID, permissio
         )
     )
     await db.flush()
+    # Права роли изменились — сбрасываем кэш всех её носителей.
+    await invalidate_cache_for_role(db, role_id)
 
 
 # ── User Roles ─────────────────────────────────────────────────────────────────
@@ -271,18 +294,14 @@ async def assign_role(
     audit_id = await _write_role_audit(db, granted_by, actor_username, user_id, role, "role_assign")
     logger.info("role_audit_written", audit_id=audit_id, user_id=str(user_id), role_code=role.code, is_privileged=role.is_privileged)
 
-    import asyncio
-
-    async def _run_evaluate(audit_log_id: int) -> None:
-        await asyncio.sleep(0.5)  # ensure transaction commits before querying
-        try:
-            from app.modules.monitor.tasks import _evaluate_simple_async
-            result = await _evaluate_simple_async(audit_log_id)
-            logger.info("evaluate_simple_rules_done", audit_log_id=audit_log_id, fired=result.get("fired", 0))
-        except Exception as exc:
-            logger.warning("evaluate_simple_rules_failed", audit_log_id=audit_log_id, error=str(exc))
-
-    asyncio.ensure_future(_run_evaluate(audit_id))
+    # Оценка правил — через Celery ПОСЛЕ коммита транзакции (countdown=1).
+    # Прежний asyncio.ensure_future + sleep(0.5) был fire-and-forget на временном
+    # event loop: задача могла быть отменена GC и читала ещё незакоммиченный audit_id.
+    try:
+        from app.modules.monitor.tasks import evaluate_simple_rules
+        evaluate_simple_rules.apply_async(args=[audit_id], countdown=1)
+    except Exception as exc:
+        logger.warning("evaluate_simple_dispatch_failed", audit_log_id=audit_id, error=str(exc))
 
     return user_role
 

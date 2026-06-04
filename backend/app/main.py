@@ -15,7 +15,18 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("accessguard_starting", version="1.0.0")
+    # Инициализируем Kafka-producer на старте (в loop'е uvicorn) и корректно
+    # закрываем при остановке — иначе несброшенные сообщения теряются.
+    from app.kafka.producer import get_producer, close_producer
+    try:
+        await get_producer()
+    except Exception as exc:
+        logger.warning("kafka_producer_init_failed", error=str(exc))
     yield
+    try:
+        await close_producer()
+    except Exception as exc:
+        logger.warning("kafka_producer_close_failed", error=str(exc))
     logger.info("accessguard_stopping")
 
 

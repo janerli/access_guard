@@ -205,6 +205,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - reports_files:/app/reports_output
@@ -223,6 +227,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     volumes:
       - ./backend:/app
       - app_logs:/app/logs
@@ -241,6 +247,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - reports_files:/app/reports_output
@@ -258,6 +268,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -297,7 +309,7 @@ services:
       - /app/node_modules
     restart: unless-stopped
 
-  # ─── Внешняя панель симуляции угроз (порт 8001) ───────────────────────────
+  # ─── Внешняя панель симуляции угроз (порт 8002) ───────────────────────────
   simulator-panel:
     image: python:3.11-alpine
     command: python -m http.server 8002 --directory /panel

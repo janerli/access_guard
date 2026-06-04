@@ -16,16 +16,24 @@ async def fire_alert(
     details: dict | None = None,
     correlation_id: UUID | None = None,
 ) -> Alert | None:
-    """Create alert if cooldown passed; send notifications. Flush-only."""
+    """Create alert if cooldown passed; commit, then send notifications.
+
+    Cooldown учитывает subject_user_id: для per-user правил
+    (multiple_failed_logins и т.п.) срабатывание по одному пользователю
+    не должно глушить алерты по другим пользователям.
+    Уведомления отправляются ПОСЛЕ commit — иначе при откате транзакции
+    письмо уже ушло, а алерта в БД нет.
+    """
     if rule.cooldown_seconds > 0:
         cooldown_since = datetime.now(timezone.utc) - timedelta(seconds=rule.cooldown_seconds)
-        existing = (await db.execute(
-            select(Alert).where(
-                Alert.rule_id == rule.id,
-                Alert.triggered_at >= cooldown_since,
-                Alert.status != AlertStatus.false_positive,
-            )
-        )).scalar_one_or_none()
+        cooldown_q = select(Alert).where(
+            Alert.rule_id == rule.id,
+            Alert.triggered_at >= cooldown_since,
+            Alert.status != AlertStatus.false_positive,
+        )
+        if subject_user_id is not None:
+            cooldown_q = cooldown_q.where(Alert.subject_user_id == subject_user_id)
+        existing = (await db.execute(cooldown_q)).scalar_one_or_none()
         if existing:
             return None
 
@@ -42,6 +50,9 @@ async def fire_alert(
     channels = (await db.execute(
         select(NotificationChannel).where(NotificationChannel.is_enabled == True)  # noqa: E712
     )).scalars().all()
+
+    # Делаем alert (и связанные записи) durable ДО отправки уведомлений.
+    await db.commit()
 
     await notification_service.send(alert, rule, list(channels))
     return alert

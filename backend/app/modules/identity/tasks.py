@@ -35,6 +35,8 @@ async def _cleanup_blocked_users_async():
         for user in users:
             await delete_user(db, user)
             logger.info("user_auto_deleted", user_id=str(user.id), employee_id=user.employee_id)
+        # Сервисные функции делают только flush — коммитим на стороне вызывающего.
+        await db.commit()
 
 
 @celery_app.task(name="identity.reconcile_with_hr")
@@ -76,3 +78,5 @@ async def _reconcile_async():
                     department_code=emp.get("department_code"),
                 )
                 logger.info("hr_reconcile_user_created", employee_id=emp["employee_id"])
+        # Сервисные функции делают только flush — коммитим здесь.
+        await db.commit()
