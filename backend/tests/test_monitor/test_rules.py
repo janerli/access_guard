@@ -236,11 +236,13 @@ async def test_bulk_user_changes_es_error():
 @pytest.mark.asyncio
 async def test_inactive_user_login_detects_inactive():
     es = AsyncMock()
-    # First call: returns users who logged in recently
-    # Second call (per user): returns 0 previous logins → inactive
+    # Call 1: users who logged in recently
+    # Call 2: 0 logins in dormancy window [threshold .. now) → potentially inactive
+    # Call 3: >0 logins before threshold → was active before, so it's a real dormant account
     es.search = AsyncMock(side_effect=[
         _es_resp([{"key": "ghost_user", "doc_count": 1}], agg_key="users"),
         {"hits": {"total": {"value": 0}}, "aggregations": {}},
+        {"hits": {"total": {"value": 3}}, "aggregations": {}},
     ])
     results = await check_inactive_user_login(es, {"inactive_days": 90})
     assert len(results) == 1

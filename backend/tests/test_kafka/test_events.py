@@ -49,12 +49,12 @@ async def test_publish_event_calls_producer():
     event = KafkaEvent(event_type="user.created", producer="identity", payload={"user_id": "u1"})
 
     mock_producer = AsyncMock()
-    mock_producer.send = AsyncMock()
+    mock_producer.send_and_wait = AsyncMock()
 
     with patch("app.kafka.producer.get_producer", return_value=mock_producer):
         from app.kafka.producer import publish_event
         await publish_event(TOPIC_IDENTITY_USERS, event, key="u1")
 
-    mock_producer.send.assert_called_once()
-    call_args = mock_producer.send.call_args
+    mock_producer.send_and_wait.assert_called_once()
+    call_args = mock_producer.send_and_wait.call_args
     assert call_args[0][0] == TOPIC_IDENTITY_USERS
