@@ -5,8 +5,8 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import httpx
 import redis.asyncio as aioredis
+from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings as _settings
 from app.core.deps import require_roles
 from app.database import get_db
+from app.elastic.client import get_elastic_client
 from app.kafka.producer import get_producer
 from app.models.admin import AdminRole
 
@@ -70,18 +71,25 @@ async def system_health(db: AsyncSession = Depends(get_db)):
     except Exception:
         pass
 
-    # Elasticsearch — use plain HTTP to avoid Python client version negotiation
-    # issues (client 9.x sends compatible-with=9, but ES 8.x only accepts 7 or 8).
+    # Elasticsearch
     es_status = ServiceStatus(status="down")
     try:
+        _es = AsyncElasticsearch(
+            hosts=[_settings.ELASTICSEARCH_URL],
+            request_timeout=3,
+            max_retries=1,
+            retry_on_timeout=False,
+        )
         t0 = time.monotonic()
-        async with httpx.AsyncClient(timeout=3.0) as hc:
-            resp = await hc.get(f"{_settings.ELASTICSEARCH_URL}/_cluster/health")
+        info = await _es.cluster.health(timeout="3s")
         es_latency = round((time.monotonic() - t0) * 1000, 2)
-        cluster_status = resp.json().get("status", "red")
+        await _es.close()
+        cluster_status = info.get("status", "red")
         # Single-node ES always returns yellow (replica shards unassigned) — treat as ok
         if cluster_status in ("green", "yellow"):
             es_status = ServiceStatus(status="ok", latency_ms=es_latency)
+        else:
+            es_status = ServiceStatus(status="down")
     except Exception:
         pass
 
