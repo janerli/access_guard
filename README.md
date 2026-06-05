@@ -69,13 +69,13 @@ bash scripts/seed.sh
 | Сервис | Адрес | Назначение |
 |--------|-------|------------|
 | 🖥️ **Frontend** | [localhost:5173](http://localhost:5173) | Основной веб-интерфейс |
-| 🧪 **Симулятор угроз** | [localhost:8001](http://localhost:8001) | Внешняя тест-панель (без авторизации на странице) |
 | 📋 **API Swagger** | [localhost:8000/docs](http://localhost:8000/docs) | Документация REST API |
 | 📊 **Kibana** | [localhost:5601](http://localhost:5601) | Дашборды событий безопасности |
 | 📧 **MailHog** | [localhost:8025](http://localhost:8025) | Перехват email-оповещений |
 | 🔀 **Kafka UI** | [localhost:8080](http://localhost:8080) | Топики, сообщения, consumer groups |
 | 🌸 **Flower** | [localhost:5555](http://localhost:5555) | Мониторинг Celery-задач |
 | 👥 **HR-mock** | [localhost:8001/docs](http://localhost:8001/docs) | Симулятор кадровой системы |
+| 🧪 **Симулятор угроз** | [localhost:8002](http://localhost:8002) | Внешняя тест-панель симуляции угроз |
 
 ---
 
@@ -192,7 +192,7 @@ bash scripts/seed.sh
 <details>
 <summary><b>🧪 Симулятор угроз — внешняя тест-панель</b></summary>
 
-Standalone HTML-страница на **[localhost:8001](http://localhost:8001)** — отдельный Docker-сервис, не требующий сборки.
+Standalone HTML-страница на **[localhost:8002](http://localhost:8002)** — отдельный Docker-сервис, не требующий сборки.
 
 - Вводишь API URL + логин/пароль → подключается → показывает все 10 сценариев
 - Кнопка «Симулировать» на каждый сценарий + «Запустить все»
@@ -279,11 +279,12 @@ docker compose down -v && docker compose up -d && sleep 120 && bash scripts/seed
 | Проблема | Решение |
 |----------|---------|
 | Kibana показывает ошибки полей (Terms aggregation) | Старые индексы с неверным маппингом. Запусти: `bash scripts/elastic-init.sh` — скрипт удалит старые индексы, потом `bash scripts/seed.sh` |
-| Отчёт завис в `pending` | Проверить воркер: `docker compose logs worker --tail=30`. Убедиться что `elastic-init` завершился с кодом 0 |
+| Отчёт завис в `pending` или «ES недоступен» | Пересобрать образы worker и beat: `docker compose build --no-cache worker beat && docker compose up -d --no-deps worker beat` |
 | `elastic-init` завис | `docker compose logs elastic-init` — обычно ES ещё не готов, подождать и перезапустить: `docker compose restart elastic-init` |
-| Нет данных в Kibana | Outbox-publisher отправляет каждые 10 сек. Проверить: `docker compose logs beat --tail=20` и `docker compose logs logstash --tail=20` |
+| Нет данных в Kibana / 0 документов в ES | Проверить Logstash: `docker compose logs logstash --tail=30`. Если данные есть в Kafka но не в ES — сбросить оффсеты: `docker stop <logstash> && kafka-consumer-groups --reset-offsets --to-earliest ... && docker start <logstash>` |
+| Симулятор угроз: «Failed to fetch» | Добавить `http://localhost:8002` в `CORS_ORIGINS` в `.env`, затем пересоздать контейнер: `docker compose up -d --no-deps backend` (не просто restart) |
 | Kafka не стартует | Подождать 1–2 мин, Zookeeper поднимается медленно: `docker compose logs kafka --tail=20` |
-| ES показывает down в health-панели | Первые 2–3 минуты ES прогревается, это нормально. Если постоянно — `docker compose restart elasticsearch` |
+| ES показывает down в health-панели | Первые 2–3 минуты ES прогревается, это нормально. Если постоянно — проверить версию клиента: `docker compose exec backend pip show elasticsearch` — должна быть 8.x. При 9.x пересобрать: `docker compose build --no-cache backend` |
 
 ---
 
@@ -323,7 +324,7 @@ access_guard/
 │   ├── store/                     # Zustand (auth)
 │   └── components/                # Layout, shadcn/ui компоненты
 ├── 📁 simulator-panel/
-│   └── index.html                 # Standalone тест-панель (порт 8001)
+│   └── index.html                 # Standalone тест-панель (порт 8002)
 ├── 📁 hr-mock/                    # FastAPI симулятор HR-системы
 ├── 📁 logstash/pipeline/
 │   └── audit.conf                 # Kafka → ES (устанавливает @timestamp из поля timestamp)
